@@ -1,23 +1,22 @@
-# Central Bank of Chile Scientific Computing Workshops
+# Central Bank of Chile 2024 Scientific Computing Workshop
 
 ![](qe-logo-large.png)
 
 This is the homepage for the [QuantEcon](https://quantecon.org/) scientific
-and high performance computing workshops to be held at the Central Bank of
+and high performance computing workshop to be held at the Central Bank of
 Chile in May 2024.
 
 
 
 ## Instructor
 
-* John Stachurski (Australian National University)
+* [John Stachurski](https://johnstachurski.net/) (Australian National University)
 
-[John Stachurski](https://johnstachurski.net/) is a mathematical and
-computational economist who works on algorithms at the intersection of dynamic
-programming, Markov dynamics, economics, and finance.  His work is published in
-journals such as the Journal of Finance, the Journal of Economic Theory,
-Automatica, Econometrica, and Operations Research.  In 2016 he co-founded
-QuantEcon with Thomas J. Sargent. 
+Bio: John Stachurski is a mathematical and computational economist who works on
+algorithms at the intersection of dynamic programming, Markov dynamics,
+economics, and finance.  His work is published in journals such as the Journal
+of Finance, the Journal of Economic Theory, Automatica, Econometrica, and
+Operations Research.  In 2016 he co-founded QuantEcon with Thomas J. Sargent. 
 
 
 ## Abstract
