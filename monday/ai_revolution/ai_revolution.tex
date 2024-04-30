@@ -207,10 +207,10 @@
 \title{Python and the AI Revolution}
 
 
-\author{Chase Coleman and John Stachurski}
+\author{John Stachurski}
 
 
-\date{March 2024}
+\date{May 2024}
 
 
 \begin{document}
@@ -227,8 +227,6 @@
 
 \begin{frame}
     \frametitle{Topics}
-
-    We will discuss
 
     \begin{itemize}
         \item Deep learning and AI
@@ -251,53 +249,65 @@
     AI is changing the world
 
     \begin{itemize}
-        \item LLMs
-        \item image processing and computer vision
+        \item image processing / computer vision
+        \vspace{0.5em}
         \item speech recognition, translation
+        \vspace{0.5em}
         \item scientific knowledge discovery
+        \vspace{0.5em}
         \item forecasting and prediction 
+        \vspace{0.5em}
+        \item generative AI
     \end{itemize}
 
     \pause
 
+        \vspace{0.5em}
         \vspace{0.5em}
         \vspace{0.5em}
     Plus killer drones, skynet, etc.\ldots
 
-    \pause
-        \vspace{0.5em}
-        \vspace{0.5em}
-        \navy{Key point:} vast investment in AI is changing the choice set
-    for \emp{all} scientific coders
     
 \end{frame}
 
+\begin{frame}
+    
+    Projected spending on AI in 2024:
 
+    \begin{itemize}
+        \item Google: \$48 billion
+        \vspace{0.5em}
+        \item Microsoft: \$60 billion
+        \vspace{0.5em}
+        \item Meta: \$40 billion
+        \vspace{0.5em}
+        \item etc.
+    \end{itemize}
 
+    \pause
+        \vspace{0.5em}
+        \vspace{0.5em}
+        \vspace{0.5em}
+        \vspace{0.5em}
+        \navy{Key point:} vast investment in AI is changing the production
+        possibility frontier for \emp{all} scientific coders
+
+\end{frame}
 
 
 \begin{frame}
     
-    Key players
-    %
-    \begin{itemize}
-        \item OpenAI / Microsoft 
-        \vspace{0.5em}
-        \item Google (Google Research, Google DeepMind)
-        \vspace{0.5em}
-        \item Meta
-        \vspace{0.5em}
-        \item Anthropic, etc.
-    \end{itemize}
 
     Platforms / libraries
 
     \begin{itemize}
-        \item PyTorch (ChatGPT, Meta's LLaMA 2,  Stable Diffusion)
+        \item PyTorch (ChatGPT, LLaMA 3, Github Copilot)
         \vspace{0.5em}
-        \item Google JAX (Google's Gemini)
+        \item Google JAX (Gemini)
         \vspace{0.5em}
-        \item Tensorflow, Keras, Mojo?
+        \item Tensorflow? 
+        \vspace{0.5em}
+        \item Mojo?
     \end{itemize}
 
 \end{frame}
@@ -461,6 +471,7 @@
 
 \begin{frame}[fragile]
     
+    \vspace{-1em}
     \begin{minted}{python}
 import jax.numpy as jnp
 from jax import grad, jit
@@ -477,8 +488,7 @@ def loss(params, x, y):
 grad_loss = jit(grad(loss))  # Now use gradient descent 
     \end{minted}
 
-
-    Source: Google JAX readthedocs
+    {\footnotesize Source: JAX readthedocs}
 
 \end{frame}
 
@@ -594,13 +604,8 @@ grad_loss = jit(grad(loss))  # Now use gradient descent
                 \item autodiff, JIT compilers, parallelization, GPUs, etc.
             \end{itemize}
         \vspace{0.5em}
-        \item We can take full advantage of them right now
+        \item We can take full advantage of them right now!
     \end{itemize}
-
-        \vspace{0.5em}
-        \vspace{0.5em}
-        \pause
-    And that's exactly what we're going to do!
 
 
 \end{frame}
