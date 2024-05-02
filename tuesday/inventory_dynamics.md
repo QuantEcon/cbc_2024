@@ -6,13 +6,19 @@ jupytext:
     format_version: 0.13
     jupytext_version: 1.16.1
 kernelspec:
-  display_name: Python
-  language: python3
+  display_name: Python 3 (ipykernel)
+  language: python
   name: python3
 ---
 
 # Inventory Dynamics
 
+------
+
+#### John Stachurski
+#### Prepared for the CBC Computational Workshop May 2024
+
+-----
 
 ## Overview
 
@@ -29,17 +35,15 @@ which can be thought of as cross-sectional distributions of inventory levels
 across a large number of firms, all of which
 
 1. evolve independently and  
-1. have the same dynamics.  
+1. have the same dynamics.
 
+This lecture will help use become familiar with NumPy.
 
-Note that we also studied this model in a [separate
-lecture](https://python.quantecon.org/inventory_dynamics.html), using Numba.
-
-Here we study the same problem using JAX.
+(Later we will try similar operations with JAX)
 
 We will use the following imports:
 
-```{code-cell}
+```{code-cell} ipython3
 import matplotlib.pyplot as plt
 import numpy as np
 from collections import namedtuple
@@ -76,11 +80,55 @@ and standard normal.
 
 Here’s a `namedtuple` that stores parameters.
 
-```{code-cell}
+```{code-cell} ipython3
 Parameters = namedtuple('Parameters', ['s', 'S', 'μ', 'σ'])
 
 # Create a default instance
 params = Parameters(s=10, S=100, μ=1.0, σ=0.5)
+```
+
+```{code-cell} ipython3
+
+
+def update(params, x):
+    "Update the state from t to t+1 given current state x."
+    Z = np.random.randn()
+    D = np.exp(params.μ + params.σ * Z)
+    if x <= params.s:
+        return max(params.S - D, 0)
+    else:
+        return max(x - D, 0)
+
+def sim_inventory_path(x_init, sim_length):
+
+    X = np.empty(sim_length)
+    X[0] = x_init
+
+    for t in range(sim_length-1):
+        X[t+1] = update(params, X[t])
+    return X
+
+s, S = params.s, params.S
+sim_length = 100
+x_init = 50
+
+X = sim_inventory_path(x_init, sim_length)
+
+fig, ax = plt.subplots()
+bbox = (0., 1.02, 1., .102)
+legend_args = {'ncol': 3,
+               'bbox_to_anchor': bbox,
+               'loc': 3,
+               'mode': 'expand'}
+
+ax.plot(X, label="inventory")
+ax.plot(np.full(sim_length, s), 'k--', label="$s$")
+ax.plot(np.full(sim_length, S), 'k-', label="$S$")
+ax.set_ylim(0, S+10)
+ax.set_xlabel("time")
+ax.legend(**legend_args)
+
+plt.show()
 ```
 
 ## Cross-sectional distributions
@@ -105,7 +153,7 @@ We will then visualize $ \psi_T $ by histogramming the cross-section.
 
 We will use the following code to update the cross-section of firms by one period.
 
-```{code-cell}
+```{code-cell} ipython3
 def update_cross_section(params, X_vec, D):
     """
     Update by one period a cross-section of firms with inventory levels given by
@@ -117,29 +165,21 @@ def update_cross_section(params, X_vec, D):
     # Unpack
     s, S = params.s, params.S
     # Restock if the inventory is below the threshold
-    X_new = np.where(X_vec <= s, 
-                      np.maximum(S - D, 0), np.maximum(X_vec - D, 0))
+    X_new = np.where(
+        X_vec <= s, np.maximum(S - D, 0), np.maximum(X_vec - D, 0))
     return X_new
 ```
 
-### For loop version
+### Shifting the cross-section
 
 Now we provide code to compute the cross-sectional distribution $ \psi_T $ given some
 initial distribution $ \psi_0 $ and a positive integer $ T $.
 
-In this code we use an ordinary Python `for` loop to step forward through time
-
-While Python loops are slow, this approach is reasonable here because
-efficiency of outer loops has far less influence on runtime than efficiency of inner loops.
-
-(Below we will squeeze out more speed by compiling the outer loop as well as the
-update rule.)
-
 In the code below, the initial distribution $ \psi_0 $ takes all firms to have
 initial inventory `x_init`.
 
-```{code-cell}
-def compute_cross_section(params, x_init, T, key, num_firms=50_000):
+```{code-cell} ipython3
+def compute_cross_section(params, x_init, T, num_firms=50_000):
     # Set up initial distribution
     X_vec = np.full(num_firms, x_init)
     # Loop
@@ -154,26 +194,20 @@ def compute_cross_section(params, x_init, T, key, num_firms=50_000):
 
 We’ll use the following specification
 
-```{code-cell}
+```{code-cell} ipython3
 x_init = 50
 T = 500
 ```
 
 Let’s look at the timing.
 
-```{code-cell}
-%time X_vec = compute_cross_section(params, \
-        x_init, T, key).block_until_ready()
-```
-
-```{code-cell}
-%time X_vec = compute_cross_section(params, \
-        x_init, T, key).block_until_ready()
+```{code-cell} ipython3
+X_vec = compute_cross_section(params, x_init, T)
 ```
 
 Here’s a histogram of inventory levels at time $ T $.
 
-```{code-cell}
+```{code-cell} ipython3
 fig, ax = plt.subplots()
 ax.hist(X_vec, bins=50, 
         density=True, 
@@ -185,8 +219,6 @@ ax.legend()
 plt.show()
 ```
 
-
-
 ## Distribution dynamics
 
 Next let’s take a look at how the distribution sequence evolves over time.
@@ -196,44 +228,40 @@ We will go back to using ordinary Python `for` loops.
 Here is code that repeatedly shifts the cross-section forward while
 recording the cross-section at the dates in `sample_dates`.
 
-```{code-cell}
+```{code-cell} ipython3
 def shift_forward_and_sample(x_init, params, sample_dates,
-                        key, num_firms=50_000, sim_length=750):
+                             num_firms=50_000, sim_length=750):
 
-    X = res = np.full((num_firms, ), x_init)
-
+    X = np.full((num_firms, ), x_init)
+    X_samples = []
     # Use for loop to update X and collect samples
     for i in range(sim_length):
+        if i in sample_dates:
+            X_samples.append(X)
         Z = np.random.randn(num_firms)
         D = np.exp(params.μ + params.σ * Z)
         X = update_cross_section(params, X, D)
 
-        # draw a sample at the sample dates
-        if (i+1 in sample_dates):
-          res = np.vstack((res, X))
-
-    return res[1:]
+    return X_samples
 ```
 
 Let’s test it
 
-```{code-cell}
+```{code-cell} ipython3
 x_init = 50
 num_firms = 10_000
 sample_dates = 10, 50, 250, 500, 750
 
-
-%time X = shift_forward_and_sample(x_init, params, \
-                              sample_dates, key).block_until_ready()
+X_samples = shift_forward_and_sample(x_init, params, sample_dates)
 ```
 
 Let’s plot the output.
 
-```{code-cell}
+```{code-cell} ipython3
 fig, ax = plt.subplots()
 
 for i, date in enumerate(sample_dates):
-    ax.hist(X[i, :], bins=50, 
+    ax.hist(X_samples, bins=50, 
             density=True, 
             histtype='step',
             label=f'cross-section when $t = {date}$')
@@ -272,13 +300,7 @@ In the exercise, we will
 This proportion approximates the probability of the event when the sample size
 is large.
 
-+++
-
-### For loop version
-
-We start with an easier `for` loop implementation
-
-```{code-cell}
+```{code-cell} ipython3
 def update_stock(n_restock, X, params, D):
     n_restock = np.where(X <= params.s,
                           n_restock + 1,
@@ -286,9 +308,9 @@ def update_stock(n_restock, X, params, D):
     X = np.where(X <= params.s,
                   np.maximum(params.S - D, 0),
                   np.maximum(X - D, 0))
-    return n_restock, X, key
+    return n_restock, X
 
-def compute_freq(params, key,
+def compute_freq(params,
                  x_init=70,
                  sim_length=50,
                  num_firms=1_000_000):
@@ -303,13 +325,17 @@ def compute_freq(params, key,
     for i in range(sim_length):
         Z = np.random.randn(num_firms)
         D = np.exp(params.μ + params.σ * Z)
-        n_restock, X, key = update_stock(
+        n_restock, X = update_stock(
             n_restock, X, params, D)
 
     return np.mean(n_restock > 1, axis=0)
 ```
 
-```{code-cell}
-%time freq = compute_freq(params, key)
+```{code-cell} ipython3
+freq = compute_freq(params)
 print(f"Frequency of at least two stock outs = {freq}")
+```
+
+```{code-cell} ipython3
+
 ```
