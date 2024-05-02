@@ -15,9 +15,9 @@ kernelspec:
 
 -----
 
-#### Chase Coleman and John Stachurski
+#### John Stachurski
 
-#### Prepared for the QuantEcon ICD Workshop (March 2024)
+#### Prepared for the CBC Computational Workshop (May 2024)
 
 This notebook provides a Python/JAX implementation of "Overborrowing and Systemic Externalities" (AER 2011) by [Javier Bianchi](http://www.javierbianchi.com/).
 

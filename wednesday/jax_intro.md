@@ -15,9 +15,9 @@ kernelspec:
 
 ----
 
-#### Chase Coleman and John Stachurski
+#### John Stachurski
 
-#### Prepared for the QuantEcon ICD Workshop (March 2024)
+#### Prepared for the CBC Workshop (May 2024)
 
 ----
 

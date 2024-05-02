@@ -15,9 +15,9 @@ kernelspec:
 
 ----
 
-#### Chase Coleman and John Stachurski
+#### John Stachurski
 
-#### Prepared for the QuantEcon-ICD Computational Economics Course (March 2024)
+#### Prepared for the CBC Computational Economics Workshop (May 2024)
 
 -----
 

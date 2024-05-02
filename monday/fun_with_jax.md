@@ -13,8 +13,13 @@ kernelspec:
 
 # Fun with JAX
 
-#### [John Stachurski](https://johnstachurski.net/) and [Chase Coleman](https://github.com/cc7768)
-March 2024
+-----
+
+#### [John Stachurski](https://johnstachurski.net/) 
+
+### Prepared for the CBC Computational Workshop (May 2024)
+
+-----
 
 This notebook illustrates the power of [JAX](https://github.com/google/jax), a Python library built by Google Research.
 

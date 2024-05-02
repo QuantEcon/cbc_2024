@@ -13,9 +13,7 @@ kernelspec:
 
 # Accelerating Python Code with Numba
 
-### Written for the CBC Quantitative Economics Workshop (September 2022)
-
-+++
+### Written for the CBC Workshop (May 2024)
 
 #### John Stachurski
 
@@ -396,7 +394,6 @@ toc()
 
 #### JITTed, parallelized code: @vectorize
 
-+++ {"nbpresent": {"id": "3de27362-4528-4669-8e3d-2e7db1dd0721"}}
 
 Numba for vectorization with automatic parallization - even faster:
 
@@ -419,20 +416,12 @@ np.max(f_par(x, y))
 ```
 
 ```{code-cell} ipython3
----
-nbpresent:
-  id: 08ff9d10-b80e-489f-8e7e-5e1869903393
----
 tic()
 np.max(f_par(x, y))
 toc()
 ```
 
 ```{code-cell} ipython3
----
-nbpresent:
-  id: 08ff9d10-b80e-489f-8e7e-5e1869903393
----
 tic()
 np.max(f_par(x, y))
 toc()

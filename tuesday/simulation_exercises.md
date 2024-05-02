@@ -13,9 +13,9 @@ kernelspec:
 
 # Simulation Exercises
 
-#### Prepared for the IMF Computational Workshop (March 2024)
+#### Prepared for the CBC Computational Workshop (May 2024)
 
-#### Chase Coleman and John Stachurski
+#### John Stachurski
 
 +++
 

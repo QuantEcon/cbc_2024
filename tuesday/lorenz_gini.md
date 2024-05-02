@@ -15,9 +15,9 @@ kernelspec:
 
 -----
 
-#### Chase Coleman and John Stachurski
+#### John Stachurski
 
-#### Prepared for the QuantEcon ICD Computational Workshop (March 2024)
+#### Prepared for the CBC Computational Workshop (May 2024)
 
 This notebook contains some programming exercises related to the Lorenz curve
 and the Gini coefficient, which are often used to study inequality.

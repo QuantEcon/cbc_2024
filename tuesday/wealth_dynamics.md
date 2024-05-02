@@ -15,9 +15,9 @@ kernelspec:
 
 ------
 
-#### Chase Coleman and John Stachurski
+#### John Stachurski
 
-#### Prepared for the QuantEcon ICD Workshop (March 2024)
+#### Prepared for the CBC Workshop (May 2024)
 
 In this lecture we examine wealth dynamics in large cross-section of agents who
 are subject to both 
@@ -50,8 +50,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import quantecon as qe
-import jax
-import jax.numpy as jnp
 from time import time
 ```
 
@@ -300,152 +298,6 @@ print(f"Generated cross-section in {numba_time} seconds.\n")
 
 ```
 
-## Wealth dynamics using JAX
-
-Let's redo some of the preceding calculations using JAX and see how execution
-speed compares.
-
-+++
-
-### Replicating the wealth dynamics code with JAX
-
-```{code-cell} ipython3
-def update_cross_section_jax(model, w_distribution, z_sequence, key):
-    """
-    Shifts a cross-section of household forward in time
-
-    Takes 
-
-        * a current distribution of wealth values as w_distribution and
-        * an aggregate shock sequence z_sequence
-
-    and updates each w_t in w_distribution to w_{t+j}, where
-    j = len(z_sequence).
-
-    Returns the new distribution.
-
-    """
-    # Unpack, simplify names
-    household_params, aggregate_params = model
-    w_hat, s_0, c_y, μ_y, σ_y, c_r, μ_r, σ_r, y_mean = household_params
-    w = w_distribution
-    n = len(w)
-
-    # Update wealth
-    for t, z in enumerate(z_sequence):
-        U = jax.random.normal(key, (2, n))
-        y = c_y * jnp.exp(z) + jnp.exp(μ_y + σ_y * U[0, :])
-        R = c_r * jnp.exp(z) + jnp.exp(μ_r + σ_r * U[1, :])
-        w = y + jnp.where(w < w_hat, 0.0, R * s_0 * w) 
-        key, subkey = jax.random.split(key)
-
-    return w
-```
-
-Let's see how long it takes to shift the cross-section of households forward
-using JAX
-
-```{code-cell} ipython3
-sim_length = 200
-num_households = 10_000_000
-ψ_0 = jnp.full(num_households, y_mean)  # Initial distribution
-z_sequence = generate_aggregate_state_sequence(aggregate_params,
-                                               length=sim_length)
-z_sequence = jnp.array(z_sequence)
-```
-
-```{code-cell} ipython3
-print("Generating cross-section using JAX")
-key = jax.random.PRNGKey(1234)
-start_time = time()
-ψ_star = update_cross_section_jax(model, ψ_0, z_sequence, key)
-jax_time = time() - start_time
-print(f"Generated cross-section in {jax_time} seconds.\n")
-```
-
-```{code-cell} ipython3
-print("Repeating without compile time.")
-key = jax.random.PRNGKey(1234)
-start_time = time()
-ψ_star = update_cross_section_jax(model, ψ_0, z_sequence, key)
-jax_time = time() - start_time
-print(f"Generated cross-section in {jax_time} seconds")
-```
-
-And let's see how long it takes if we compile the loop.
-
-```{code-cell} ipython3
-def update_cross_section_jax_compiled(model, 
-                                      w_distribution, 
-                                      w_size,
-                                      z_sequence, 
-                                      key):
-    """
-    Shifts a cross-section of household forward in time
-
-    Takes 
-
-        * a current distribution of wealth values as w_distribution and
-        * an aggregate shock sequence z_sequence
-
-    and updates each w_t in w_distribution to w_{t+j}, where
-    j = len(z_sequence).
-
-    Returns the new distribution.
-
-    """
-    # Unpack, simplify names
-    household_params, aggregate_params = model
-    w_hat, s_0, c_y, μ_y, σ_y, c_r, μ_r, σ_r, y_mean = household_params
-    w = w_distribution
-    n = len(w)
-    z = z_sequence
-    sim_length = len(z)
-
-    def body_function(t, state):
-        key, w = state
-        key, subkey = jax.random.split(key)
-        U = jax.random.normal(subkey, (2, n))
-        y = c_y * jnp.exp(z[t]) + jnp.exp(μ_y + σ_y * U[0, :])
-        R = c_r * jnp.exp(z[t]) + jnp.exp(μ_r + σ_r * U[1, :])
-        w = y + jnp.where(w < w_hat, 0.0, R * s_0 * w) 
-        return key, w
-
-    key, w = jax.lax.fori_loop(0, sim_length, body_function, (key, w))
-    return w
-```
-
-```{code-cell} ipython3
-update_cross_section_jax_compiled = jax.jit(
-        update_cross_section_jax_compiled, static_argnums=(2,)
-)
-```
-
-```{code-cell} ipython3
-print("Generating cross-section using JAX with compiled loop")
-key = jax.random.PRNGKey(1234)
-start_time = time()
-ψ_star = update_cross_section_jax_compiled(
-        model, ψ_0, num_households, z_sequence, key
-)
-jax_fori_time = time() - start_time
-print(f"Generated cross-section in {jax_fori_time} seconds.\n")
-```
-
-```{code-cell} ipython3
-print("Repeating without compile time")
-key = jax.random.PRNGKey(1234)
-start_time = time()
-ψ_star = update_cross_section_jax_compiled(
-        model, ψ_0, num_households, z_sequence, key
-)
-jax_fori_time = time() - start_time
-print(f"Generated cross-section in {jax_fori_time} seconds")
-```
-
-```{code-cell} ipython3
-print(f"JAX is {numba_time / jax_fori_time:.4f} times faster.\n")
-```
 
 ### Pareto tails
 
@@ -462,10 +314,7 @@ In the limit, data that obeys a power law generates a straight line.
 
 ```{code-cell} ipython3
 model = create_wealth_model()
-key = jax.random.PRNGKey(1234)
-ψ_star = update_cross_section_jax_compiled(
-        model, ψ_0, num_households, z_sequence, key
-)
+ψ_star = update_cross_section(model, ψ_0, num_households, z_sequence)
 fig, ax = plt.subplots()
 
 rank_data, size_data = qe.rank_size(ψ_star, c=0.001)
@@ -475,6 +324,7 @@ ax.set_ylabel("log size")
 
 plt.show()
 ```
+
 
 ### Lorenz curves and Gini coefficents
 
@@ -500,16 +350,19 @@ generates data points $(x_i, y_i)_{i=0}^n$  according to
        \frac{\sum_{j \leq i} w_j}{\sum_{j \leq n} w_j}  
 \end{equation*}
 
+
+Exercise: write code for this
+
+Solution:
+
 ```{code-cell} ipython3
 def _lorenz_curve_jax(w, w_size):
     n = w.shape[0]
-    w = jnp.sort(w)
-    x = jnp.arange(n + 1) / n
-    s = jnp.concatenate((jnp.zeros(1), jnp.cumsum(w)))
+    w = np.sort(w)
+    x = np.arange(n + 1) / n
+    s = np.concatenate((np.zeros(1), np.cumsum(w)))
     y = s / s[n]
     return x, y
-
-lorenz_curve_jax = jax.jit(_lorenz_curve_jax, static_argnums=(1,))
 ```
 
 Let's test
@@ -517,25 +370,21 @@ Let's test
 ```{code-cell} ipython3
 sim_length = 200
 num_households = 1_000_000
-ψ_0 = jnp.full(num_households, y_mean)  # Initial distribution
+ψ_0 = np.full(num_households, y_mean)  # Initial distribution
 z_sequence = generate_aggregate_state_sequence(aggregate_params,
                                                length=sim_length)
-z_sequence = jnp.array(z_sequence)
+z_sequence = np.array(z_sequence)
 ```
 
 ```{code-cell} ipython3
-key = jax.random.PRNGKey(1234)
 ψ_star = update_cross_section_jax_compiled(
-        model, ψ_0, num_households, z_sequence, key
+        model, ψ_0, num_households, z_sequence
 )
 ```
 
-```{code-cell} ipython3
-%time _ = lorenz_curve_jax(ψ_star, num_households)
-```
 
 ```{code-cell} ipython3
-%time x, y = lorenz_curve_jax(ψ_star, num_households)
+x, y = lorenz_curve(ψ_star, num_households)
 ```
 
 ```{code-cell} ipython3
@@ -545,6 +394,7 @@ ax.plot(x, x, 'k-', lw=1)
 ax.legend()
 plt.show()
 ```
+
 
 #### Gini Coefficient
 
@@ -560,249 +410,17 @@ Recall that, for sorted data $w_1, \ldots, w_n$, the Gini coefficient takes the 
         {2n\sum_{i=1}^n w_i}.
 \end{equation}
 
-
-Here's a function that computes the Gini coefficient using vectorization.
+Exercise: Write a function that computes the Gini coefficient using vectorization.
 
 ```{code-cell} ipython3
-def _gini_jax(w, w_size):
-    w_1 = jnp.reshape(w, (w_size, 1))
-    w_2 = jnp.reshape(w, (1, w_size))
-    g_sum = jnp.sum(jnp.abs(w_1 - w_2))
-    return g_sum / (2 * w_size * jnp.sum(w))
-
-gini_jax = jax.jit(_gini_jax, static_argnums=(1,))
+def gini(w, w_size):
+    w_1 = np.reshape(w, (w_size, 1))
+    w_2 = np.reshape(w, (1, w_size))
+    g_sum = np.sum(np.abs(w_1 - w_2))
+    return g_sum / (2 * w_size * np.sum(w))
 ```
 
 ```{code-cell} ipython3
-%time gini = gini_jax(ψ_star, num_households).block_until_ready()
-```
-
-```{code-cell} ipython3
-%time gini = gini_jax(ψ_star, num_households).block_until_ready()
+gini = gini(ψ_star, num_households)
 gini
-```
-
-**Exercise**
-
-See if you can write an alternative version of `gini_jax` that uses `vmap` instead of reshaping and broadcasting.
-
-Test with the same array to see if you can obtain the same output.
-
-```{code-cell} ipython3
-for i in range(12):
-    print("Solution below.")
-```
-
-**Solution**
-
-+++
-
-Here's one solution:
-
-```{code-cell} ipython3
-@jax.jit
-def gini_jax_vmap(w):
-
-    def _inner_sum(x):
-        return jnp.sum(jnp.abs(x - w))
-    
-    inner_sum = jax.vmap(_inner_sum)
-    
-    full_sum = jnp.sum(inner_sum(w))
-    return full_sum / (2 * len(w) * jnp.sum(w))
-```
-
-```{code-cell} ipython3
-%time gini = gini_jax_vmap(ψ_star).block_until_ready()
-gini
-```
-
-```{code-cell} ipython3
-%time gini = gini_jax_vmap(ψ_star).block_until_ready()
-gini
-```
-
-### Inequality and dynamics
-
-In this section we (you) investigate how the parameters determining the rate of return on assets and labor income shape inequality.
-
-In doing so we recall that
-
-$$
-    R_t := 1 + r_t = c_r \exp(z_t) + \exp(\mu_r + \sigma_r \xi_t)
-$$
-
-while
-
-$$
-    y_t = c_y \exp(z_t) + \exp(\mu_y + \sigma_y \zeta_t)
-$$
-
-+++
-
-**Exercise**
-
-Investigate how the Lorenz curves and the Gini coefficient associated with the wealth distribution change as return to savings varies.
-
-In particular, plot Lorenz curves for the following three different values of $\mu_r$.
-
-```{code-cell} ipython3
-μ_r_vals = (0.0, 0.025, 0.05)
-```
-
-Youse the following as your initial cross-sectional distribution
-
-```{code-cell} ipython3
-num_households = 1_000_000
-ψ_0 = jnp.full(num_households, y_mean)  # Initial distribution
-```
-
-Once you have done that, plot the Gini coefficients as well.
-
-Do the outcomes match your intuition?
-
-```{code-cell} ipython3
-for i in range(12):
-    print("Solution below.")
-```
-
-**Solution**
-
-```{code-cell} ipython3
-key = jax.random.PRNGKey(1234)
-fig, ax = plt.subplots()
-gini_vals = []
-for μ_r in μ_r_vals:
-    model = create_wealth_model(μ_r=μ_r)
-    ψ_star = update_cross_section_jax_compiled(
-            model, ψ_0, num_households, z_sequence, key
-    )
-    x, y = lorenz_curve_jax(ψ_star, num_households)
-    g = gini_jax(ψ_star, num_households)
-    ax.plot(x, y, label=f'$\psi^*$ at $\mu_r = {μ_r:0.2}$')
-    gini_vals.append(g)
-ax.plot(x, y, label='equality')
-ax.legend(loc="upper left")
-plt.show()
-```
-
-The Lorenz curve shifts downwards as returns on financial income rise, indicating a rise in inequality.
-
-Now let's check the Gini coefficient.
-
-```{code-cell} ipython3
-fig, ax = plt.subplots()
-ax.plot(μ_r_vals, gini_vals, label='gini coefficient')
-ax.set_xlabel("$\mu_r$")
-ax.legend()
-plt.show()
-```
-
-As expected, inequality increases as returns on financial income rise.
-
-**Exercise**
-
-Now investigate what happens when we change the volatility term $\sigma_r$ in financial returns.
-
-Use the same initial condition as before and the sequence
-
-```{code-cell} ipython3
-σ_r_vals = (0.35, 0.45, 0.52)
-```
-
-To isolate the role of volatility, set $\mu_r = - \sigma_r^2 / 2$ at each $\sigma_r$.
-
-(This holds the variance of the ideosyncratic term $\exp(\mu_r + \sigma_r \zeta)$ constant.)
-
-```{code-cell} ipython3
-for i in range(12):
-    print("Solution below")
-```
-
-Here's one solution.
-
-```{code-cell} ipython3
-key = jax.random.PRNGKey(1234)
-fig, ax = plt.subplots()
-
-gini_vals = []
-for σ_r in σ_r_vals:
-    model = create_wealth_model(σ_r=σ_r, μ_r=(-σ_r**2/2))
-    ψ_star = update_cross_section_jax_compiled(
-            model, ψ_0, num_households, z_sequence, key
-    )
-    x, y = lorenz_curve_jax(ψ_star, num_households)
-    g = gini_jax(ψ_star, num_households)
-    ax.plot(x, y, label=f'$\psi^*$ at $\sigma_r = {σ_r:0.2}$')
-    gini_vals.append(g)
-ax.plot(x, y, label='equality')
-ax.legend(loc="upper left")
-plt.show()
-```
-
-```{code-cell} ipython3
-fig, ax = plt.subplots()
-ax.plot(σ_r_vals, gini_vals, label='gini coefficient')
-ax.set_xlabel("$\sigma_r$")
-ax.legend()
-plt.show()
-```
-
-**Exercise**
-
-Which will have more impact on inequality -- a 5% rise in volatility of the rate of return, or a 5% rise in volatility of labor income?
-
-Test this by 
-
-1. Shifting $\sigma_r$ up 5% from the baseline and plotting the Lorenz curve
-1. Shifting $\sigma_y$ up 5% from the baseline and plotting the Lorenz curve
-
-Plot both on the same figure and examine the result.
-
-```{code-cell} ipython3
-for i in range(12):
-    print("Solution below")
-```
-
-**Solution**
-
-Here's one solution.
-
-It shows that increasing volatility in financial income has the greater effect.
-
-```{code-cell} ipython3
-model = create_wealth_model()
-household_params, aggregate_params = model
-w_hat, s_0, c_y, μ_y, σ_y, c_r, μ_r, σ_r, y_mean = household_params
-σ_r_default = σ_r
-σ_y_default = σ_y
-
-ψ_star = update_cross_section_jax_compiled(
-            model, ψ_0, num_households, z_sequence, key
-)
-x_default, y_default = lorenz_curve_jax(ψ_star, num_households)
-
-model = create_wealth_model(σ_r=(1.05 * σ_r_default))
-ψ_star = update_cross_section_jax_compiled(
-            model, ψ_0, num_households, z_sequence, key
-)
-x_financial, y_financial = lorenz_curve_jax(ψ_star, num_households)
-
-
-model = create_wealth_model(σ_y=(1.05 * σ_y_default))
-ψ_star = update_cross_section_jax_compiled(
-            model, ψ_0, num_households, z_sequence, key
-)
-x_labor, y_labor = lorenz_curve_jax(ψ_star, num_households)
-
-fig, ax = plt.subplots()    
-ax.plot(x_default, x_default, 'k-', lw=1, label='equality')
-ax.plot(x_financial, y_financial, label=r'higher $\sigma_r$')
-ax.plot(x_labor, y_labor, label=r'higher $\sigma_y$')
-ax.legend()
-plt.show()
-```
-
-```{code-cell} ipython3
-
 ```

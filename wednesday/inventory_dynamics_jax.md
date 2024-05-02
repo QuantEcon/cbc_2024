@@ -13,6 +13,18 @@ kernelspec:
 
 # Inventory Dynamics
 
++++
+
+## GPU
+
+This lecture was built using a machine with JAX installed and access to a GPU.
+
+To run this lecture on [Google Colab](https://colab.research.google.com/), click on the “play” icon top right, select Colab, and set the runtime environment to include a GPU.
+
+To run this lecture on your own machine, you need to install [Google JAX](https://github.com/google/jax).
+
+
++++
 
 ## Overview
 
@@ -40,9 +52,22 @@ Here we study the same problem using JAX.
 We will use the following imports:
 
 ```{code-cell}
+:hide-output: false
+
 import matplotlib.pyplot as plt
 import numpy as np
+import jax
+import jax.numpy as jnp
+from jax import random, lax
 from collections import namedtuple
+```
+
+Here’s a description of our GPU:
+
+```{code-cell}
+:hide-output: false
+
+!nvidia-smi
 ```
 
 ## Sample paths
@@ -68,7 +93,7 @@ $$
 In what follows, we will assume that each $ D_t $ is lognormal, so that
 
 $$
-    D_t = \exp(\mu + \sigma Z_t)
+D_t = \exp(\mu + \sigma Z_t)
 $$
 
 where $ \mu $ and $ \sigma $ are parameters and $ \{Z_t\} $ is IID
@@ -77,6 +102,8 @@ and standard normal.
 Here’s a `namedtuple` that stores parameters.
 
 ```{code-cell}
+:hide-output: false
+
 Parameters = namedtuple('Parameters', ['s', 'S', 'μ', 'σ'])
 
 # Create a default instance
@@ -106,6 +133,9 @@ We will then visualize $ \psi_T $ by histogramming the cross-section.
 We will use the following code to update the cross-section of firms by one period.
 
 ```{code-cell}
+:hide-output: false
+
+@jax.jit
 def update_cross_section(params, X_vec, D):
     """
     Update by one period a cross-section of firms with inventory levels given by
@@ -117,8 +147,8 @@ def update_cross_section(params, X_vec, D):
     # Unpack
     s, S = params.s, params.S
     # Restock if the inventory is below the threshold
-    X_new = np.where(X_vec <= s, 
-                      np.maximum(S - D, 0), np.maximum(X_vec - D, 0))
+    X_new = jnp.where(X_vec <= s, 
+                      jnp.maximum(S - D, 0), jnp.maximum(X_vec - D, 0))
     return X_new
 ```
 
@@ -139,15 +169,18 @@ In the code below, the initial distribution $ \psi_0 $ takes all firms to have
 initial inventory `x_init`.
 
 ```{code-cell}
+:hide-output: false
+
 def compute_cross_section(params, x_init, T, key, num_firms=50_000):
     # Set up initial distribution
-    X_vec = np.full(num_firms, x_init)
+    X_vec = jnp.full((num_firms, ), x_init)
     # Loop
     for i in range(T):
-        Z = np.random.randn(num_firms)
-        D = np.exp(params.μ + params.σ * Z)
+        Z = random.normal(key, shape=(num_firms, ))
+        D = jnp.exp(params.μ + params.σ * Z)
 
         X_vec = update_cross_section(params, X_vec, D)
+        _, key = random.split(key)
 
     return X_vec
 ```
@@ -155,18 +188,26 @@ def compute_cross_section(params, x_init, T, key, num_firms=50_000):
 We’ll use the following specification
 
 ```{code-cell}
+:hide-output: false
+
 x_init = 50
 T = 500
+# Initialize random number generator
+key = random.PRNGKey(10)
 ```
 
 Let’s look at the timing.
 
 ```{code-cell}
+:hide-output: false
+
 %time X_vec = compute_cross_section(params, \
         x_init, T, key).block_until_ready()
 ```
 
 ```{code-cell}
+:hide-output: false
+
 %time X_vec = compute_cross_section(params, \
         x_init, T, key).block_until_ready()
 ```
@@ -174,6 +215,8 @@ Let’s look at the timing.
 Here’s a histogram of inventory levels at time $ T $.
 
 ```{code-cell}
+:hide-output: false
+
 fig, ax = plt.subplots()
 ax.hist(X_vec, bins=50, 
         density=True, 
@@ -185,7 +228,131 @@ ax.legend()
 plt.show()
 ```
 
+### Compiling the outer loop
 
+Now let’s see if we can gain some speed by compiling the outer loop, which steps
+through the time dimension.
+
+We will do this using `jax.jit` and a `fori_loop`, which is a compiler-ready version of a `for` loop provided by JAX.
+
+```{code-cell}
+:hide-output: false
+
+def compute_cross_section_fori(params, x_init, T, key, num_firms=50_000):
+
+    s, S, μ, σ = params.s, params.S, params.μ, params.σ
+    X = jnp.full((num_firms, ), x_init)
+
+    # Define the function for each update
+    def fori_update(t, inputs):
+        # Unpack
+        X, key = inputs
+        # Draw shocks using key
+        Z = random.normal(key, shape=(num_firms,))
+        D = jnp.exp(μ + σ * Z)
+        # Update X
+        X = jnp.where(X <= s,
+                  jnp.maximum(S - D, 0),
+                  jnp.maximum(X - D, 0))
+        # Refresh the key
+        key, subkey = random.split(key)
+        return X, subkey
+
+    # Loop t from 0 to T, applying fori_update each time.
+    # The initial condition for fori_update is (X, key).
+    X, key = lax.fori_loop(0, T, fori_update, (X, key))
+
+    return X
+
+# Compile taking T and num_firms as static (changes trigger recompile)
+compute_cross_section_fori = jax.jit(
+    compute_cross_section_fori, static_argnums=(2, 4))
+```
+
+Let’s see how fast this runs with compile time.
+
+```{code-cell}
+:hide-output: false
+
+%time X_vec = compute_cross_section_fori(params, \
+    x_init, T, key).block_until_ready()
+```
+
+And let’s see how fast it runs without compile time.
+
+```{code-cell}
+:hide-output: false
+
+%time X_vec = compute_cross_section_fori(params, \
+    x_init, T, key).block_until_ready()
+```
+
+Compared to the original version with a pure Python outer loop, we have
+produced a nontrivial speed gain.
+
+This is due to the fact that we have compiled the whole operation.
+
++++
+
+### Further vectorization
+
+For relatively small problems, we can make this code run even faster by generating
+all random variables at once.
+
+This improves efficiency because we are taking more operations out of the loop.
+
+```{code-cell}
+:hide-output: false
+
+def compute_cross_section_fori(params, x_init, T, key, num_firms=50_000):
+
+    s, S, μ, σ = params.s, params.S, params.μ, params.σ
+    X = jnp.full((num_firms, ), x_init)
+    Z = random.normal(key, shape=(T, num_firms))
+    D = jnp.exp(μ + σ * Z)
+
+    def update_cross_section(i, X):
+        X = jnp.where(X <= s,
+                  jnp.maximum(S - D[i, :], 0),
+                  jnp.maximum(X - D[i, :], 0))
+        return X
+
+    X = lax.fori_loop(0, T, update_cross_section, X)
+
+    return X
+
+# Compile taking T and num_firms as static (changes trigger recompile)
+compute_cross_section_fori = jax.jit(
+    compute_cross_section_fori, static_argnums=(2, 4))
+```
+
+Let’s test it with compile time included.
+
+```{code-cell}
+:hide-output: false
+
+%time X_vec = compute_cross_section_fori(params, \
+    x_init, T, key).block_until_ready()
+```
+
+Let’s run again to eliminate compile time.
+
+```{code-cell}
+:hide-output: false
+
+%time X_vec = compute_cross_section_fori(params, \
+    x_init, T, key).block_until_ready()
+```
+
+On one hand, this version is faster than the previous one, where random variables were
+generated inside the loop.
+
+On the other hand, this implementation consumes far more memory, as we need to
+store large arrays of random draws.
+
+The high memory consumption becomes problematic for large problems.
+
++++
 
 ## Distribution dynamics
 
@@ -197,20 +364,24 @@ Here is code that repeatedly shifts the cross-section forward while
 recording the cross-section at the dates in `sample_dates`.
 
 ```{code-cell}
+:hide-output: false
+
 def shift_forward_and_sample(x_init, params, sample_dates,
                         key, num_firms=50_000, sim_length=750):
 
-    X = res = np.full((num_firms, ), x_init)
+    X = res = jnp.full((num_firms, ), x_init)
 
     # Use for loop to update X and collect samples
     for i in range(sim_length):
-        Z = np.random.randn(num_firms)
-        D = np.exp(params.μ + params.σ * Z)
+        Z = random.normal(key, shape=(num_firms, ))
+        D = jnp.exp(params.μ + params.σ * Z)
+
         X = update_cross_section(params, X, D)
+        _, key = random.split(key)
 
         # draw a sample at the sample dates
         if (i+1 in sample_dates):
-          res = np.vstack((res, X))
+          res = jnp.vstack((res, X))
 
     return res[1:]
 ```
@@ -218,9 +389,12 @@ def shift_forward_and_sample(x_init, params, sample_dates,
 Let’s test it
 
 ```{code-cell}
+:hide-output: false
+
 x_init = 50
 num_firms = 10_000
 sample_dates = 10, 50, 250, 500, 750
+key = random.PRNGKey(10)
 
 
 %time X = shift_forward_and_sample(x_init, params, \
@@ -230,6 +404,8 @@ sample_dates = 10, 50, 250, 500, 750
 Let’s plot the output.
 
 ```{code-cell}
+:hide-output: false
+
 fig, ax = plt.subplots()
 
 for i, date in enumerate(sample_dates):
@@ -279,13 +455,17 @@ is large.
 We start with an easier `for` loop implementation
 
 ```{code-cell}
+:hide-output: false
+
+# Define a jitted function for each update
+@jax.jit
 def update_stock(n_restock, X, params, D):
-    n_restock = np.where(X <= params.s,
+    n_restock = jnp.where(X <= params.s,
                           n_restock + 1,
                           n_restock)
-    X = np.where(X <= params.s,
-                  np.maximum(params.S - D, 0),
-                  np.maximum(X - D, 0))
+    X = jnp.where(X <= params.s,
+                  jnp.maximum(params.S - D, 0),
+                  jnp.maximum(X - D, 0))
     return n_restock, X, key
 
 def compute_freq(params, key,
@@ -294,22 +474,87 @@ def compute_freq(params, key,
                  num_firms=1_000_000):
 
     # Prepare initial arrays
-    X = np.full((num_firms, ), x_init)
+    X = jnp.full((num_firms, ), x_init)
 
     # Stack the restock counter on top of the inventory
-    n_restock = np.zeros((num_firms, ))
+    n_restock = jnp.zeros((num_firms, ))
 
     # Use a for loop to perform the calculations on all states
     for i in range(sim_length):
-        Z = np.random.randn(num_firms)
-        D = np.exp(params.μ + params.σ * Z)
+        Z = random.normal(key, shape=(num_firms, ))
+        D = jnp.exp(params.μ + params.σ * Z)
         n_restock, X, key = update_stock(
             n_restock, X, params, D)
+        key = random.fold_in(key, i)
 
-    return np.mean(n_restock > 1, axis=0)
+    return jnp.mean(n_restock > 1, axis=0)
 ```
 
 ```{code-cell}
-%time freq = compute_freq(params, key)
+:hide-output: false
+
+key = random.PRNGKey(27)
+%time freq = compute_freq(params, key).block_until_ready()
+print(f"Frequency of at least two stock outs = {freq}")
+```
+
+### Exercise 4.1
+
+Write a `fori_loop` version of the last function.  See if you can increase the
+speed while generating a similar answer.
+
++++
+
+### Solution to[ Exercise 4.1](https://jax.quantecon.org/#inventory_dynamics_ex1)
+
+Here is a `lax.fori_loop` version that JIT compiles the whole function
+
+```{code-cell}
+:hide-output: false
+
+@jax.jit
+def compute_freq(params, key,
+                 x_init=70,
+                 sim_length=50,
+                 num_firms=1_000_000):
+
+    s, S, μ, σ = params.s, params.S, params.μ, params.σ
+    # Prepare initial arrays
+    X = jnp.full((num_firms, ), x_init)
+    Z = random.normal(key, shape=(sim_length, num_firms))
+    D = jnp.exp(μ + σ * Z)
+
+    # Stack the restock counter on top of the inventory
+    restock_count = jnp.zeros((num_firms, ))
+    Xs = (X, restock_count)
+
+    # Define the function for each update
+    def update_cross_section(i, Xs):
+        # Separate the inventory and restock counter
+        x, restock_count = Xs[0], Xs[1]
+        restock_count = jnp.where(x <= s,
+                                restock_count + 1,
+                                restock_count)
+        x = jnp.where(x <= s,
+                      jnp.maximum(S - D[i], 0),
+                      jnp.maximum(x - D[i], 0))
+
+        Xs = (x, restock_count)
+        return Xs
+
+    # Use lax.fori_loop to perform the calculations on all states
+    X_final = lax.fori_loop(0, sim_length, update_cross_section, Xs)
+
+    return jnp.mean(X_final[1] > 1)
+```
+
+Note the time the routine takes to run, as well as the output
+
+```{code-cell}
+:hide-output: false
+
+%time freq = compute_freq(params, key).block_until_ready()
+%time freq = compute_freq(params, key).block_until_ready()
+
 print(f"Frequency of at least two stock outs = {freq}")
 ```
