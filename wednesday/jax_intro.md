@@ -49,7 +49,7 @@ import jax.numpy as jnp
 Now we can use `jnp` in place of `np` for the usual array operations:
 
 ```{code-cell} ipython3
-a = jnp.asarray((1.0, 3.2, -1.5))
+a = jnp.array((1.0, 3.2, -1.5))
 ```
 
 ```{code-cell} ipython3
@@ -122,6 +122,9 @@ result.eigenvectors
 
 ### Differences
 
+Let's now look at the differences between JAX and NumPy
+
+#### 32 bit floats
 
 One difference between NumPy and JAX is that JAX currently uses 32 bit floats by default.  
 
@@ -138,6 +141,10 @@ Let's check this works:
 ```{code-cell} ipython3
 jnp.ones(3)
 ```
+
+#### Mutability
+
++++
 
 As a NumPy replacement, a more significant difference is that arrays are treated as **immutable**.  
 
@@ -172,6 +179,8 @@ a[0] = 1   # uncommenting produces a TypeError
 The designers of JAX chose to make arrays immutable because JAX uses a
 functional programming style.  More on this below.  
 
+#### Sneaky mutation
+
 Note that, while mutation is discouraged, it is in fact possible with `at`, as in
 
 ```{code-cell} ipython3
@@ -193,9 +202,16 @@ We can check that the array is mutated by verifying its identity is unchanged:
 id(a)
 ```
 
+In general it's better to avoid mutating arrays --- more discussion below.
+
++++
+
 ## Random Numbers
 
 Random numbers are also a bit different in JAX, relative to NumPy.  
+
+
+### Controlling the state
 
 Typically, in JAX, the state of the random number generator needs to be controlled explicitly.
 
@@ -232,48 +248,50 @@ If we use the same key again, we initialize at the same seed, so the random numb
 random.normal(key, (3, 3))
 ```
 
-To produce a (quasi-) independent draw, best practice is to "split" the existing key:
+### Generating fresh draws
+
++++
+
+To produce a (quasi-) independent draw, we can use `split`
 
 ```{code-cell} ipython3
-key, subkey = random.split(key)
+new_keys = random.split(key, 5)   # Generate 5 new keys
 ```
 
 ```{code-cell} ipython3
-random.normal(key, (3, 3))
+len(new_keys)
 ```
 
 ```{code-cell} ipython3
-random.normal(subkey, (3, 3))
+for key in new_keys:
+    print(random.normal(key, (3, )))
 ```
 
-The function below produces `k` (quasi-) independent random `n x n` matrices using this procedure.
+Another function we can use to update the key is `fold_in`.
 
 ```{code-cell} ipython3
-def gen_random_matrices(key, n, k):
-    matrices = []
-    for _ in range(k):
-        key, subkey = random.split(key)
-        matrices.append(random.uniform(subkey, (n, n)))
-    return matrices
+seed = 1234  # seed to generate new key from old
+key = jax.random.fold_in(key, seed)
+
+random.normal(key, (3, 1))
 ```
 
-```{code-cell} ipython3
-matrices = gen_random_matrices(key, 2, 2)
-for A in matrices:
-    print(A)
-```
-
-One point to remember is that JAX expects tuples to describe array shapes, even for flat arrays.  Hence, to get a one-dimensional array of normal random draws we use `(len, )` for the shape, as in
+This is often used in loops -- here's an example that produces `k` (quasi-) independent random `n x n` matrices using this procedure and prints their determinants.
 
 ```{code-cell} ipython3
-random.normal(key, (5,))   # not random.normal(key, 5)
+def gen_random_matrices(seed=1234, n=10, k=5):
+    key = random.PRNGKey(seed)
+    for i in range(k):
+        key = random.fold_in(key, i)
+        d = jnp.linalg.det(random.uniform(key, (n, n)))
+        print(f"Determinant = {d:.4}")
+
+gen_random_matrices()
 ```
 
 ## JIT compilation
 
-The JAX just-in-time (JIT) compiler accelerates logic within functions by fusing linear
-algebra operations into a single optimized kernel that the host can
-launch on the GPU / TPU (or CPU if no accelerator is detected).
+The JAX just-in-time (JIT) compiler generates efficient, parallelized machine code optimized for either the CPU or the GPU/TPU, depending on whether one of these accelerators is detected.
 
 ### A first example
 
@@ -383,11 +401,11 @@ x = jnp.ones(n)
 Let's time it.
 
 ```{code-cell} ipython3
-%time g(x)
+%time g(x).block_until_ready()
 ```
 
 ```{code-cell} ipython3
-%time g(x)
+%time g(x).block_until_ready()
 ```
 
 ```{code-cell} ipython3
@@ -434,6 +452,42 @@ def g_jit_2(x):
 %time g_jit_2(x).block_until_ready()
 ```
 
+#### Static arguments
+
++++
+
+Because the compiler specializes on array sizes, it needs to recompile code when array sizes change.
+
+As a result, any argument that determines sizes of arrays should be flagged by `static_argnums` -- a signal that JAX can treat that variable as a compile-time constant (and recompile when it changes).
+
+Here's a example.
+
+```{code-cell} ipython3
+def f(n, seed=1234):
+    key = jax.random.PRNGKey(seed)
+    x = jax.random.normal(key, (n, ))
+    return x.std()
+```
+
+```{code-cell} ipython3
+f(5)
+```
+
+```{code-cell} ipython3
+f_jitted = jax.jit(f)
+```
+
+```{code-cell} ipython3
+f_jitted(5)
+```
+
+Let's fix this:
+
+```{code-cell} ipython3
+f_jitted = jax.jit(f, static_argnums=(0, ))   # First argument is static
+f_jitted(5)
+```
+
 ## Functional Programming
 
 From JAX's documentation:
@@ -454,7 +508,11 @@ In particular, a pure function has
 
 +++
 
-### Example: Python/NumPy/Numba style code is not pure
+### Examples: Python/NumPy/Numba style code is not pure
+
++++
+
+#### Example 1
 
 +++
 
@@ -468,9 +526,33 @@ np.random.randn()
 np.random.randn()
 ```
 
-This fails the test: a function returns the same result when called on the same inputs.
+This function returns the different results when called on the same inputs!
 
-The issue is that the function maintains internal state between function calls --- the state of the random number generator.
+The issue is that the function maintains state between function calls --- the state of the random number generator.
+
++++
+
+#### Example 2
+
+Here's a function that's not pure because it depends on a global
+
+```{code-cell} ipython3
+a = 10
+def f(x): return a * x
+
+f(1)
+```
+
+```{code-cell} ipython3
+a = 20
+f(1)
+```
+
+(Notice that the output of the function cannot be fully predicted from the inputs.)
+
++++
+
+#### Example 3
 
 +++
 
@@ -497,6 +579,10 @@ def double_input(x):
     y = 2 * x
     return y
 ```
+
+#### Example 4
+
++++
 
 The following function is also not pure, since it modifies a global variable (similar to the last example).
 
@@ -576,6 +662,10 @@ Can you explain why?
 
 +++
 
+#### Moral
+
++++
+
 Moral of the story: write pure functions when using JAX!
 
 +++
@@ -626,7 +716,7 @@ This procedure is called **vectorization** or **array programming**, and will be
 
 In some ways, vectorization is the same in JAX as it is in NumPy.
 
-But there are also major differences, which we highlight here.
+But there are also differences, which we highlight here.
 
 As a running example, consider the function
 
@@ -696,7 +786,7 @@ To get the right shape and the correct nested for loop calculation, we can use a
 x_mesh, y_mesh = jnp.meshgrid(x, y)
 ```
 
-Now we get what we want and the execution time is very fast.
+Now we get what we want and the execution time is fast.
 
 ```{code-cell} ipython3
 z_mesh = f(x_mesh, y_mesh) 
@@ -852,10 +942,8 @@ Use JAX
 
 ```{code-cell} ipython3
 for i in range(12):
-    print("Solution below")
+    print("Solution below 🐠")
 ```
-
-**Solution**
 
 ```{code-cell} ipython3
 def approx_pi(n, key):
@@ -949,7 +1037,7 @@ significantly faster execution.
 
 ```{code-cell} ipython3
 for i in range(12):
-    print("Solution below.")
+    print("Solution below 🐠")
 ```
 
 **Solution**
@@ -957,10 +1045,6 @@ for i in range(12):
 Here is one solution:
 
 ```{code-cell} ipython3
-M = 10_000_000
-
-n, β, K = 20, 0.99, 100
-μ, ρ, ν, S0, h0 = 0.0001, 0.1, 0.001, 10, 0
 
 @jax.jit
 def compute_call_price_jax(β=β,
