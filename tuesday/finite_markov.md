@@ -46,7 +46,6 @@ Let’s start with some imports:
 import matplotlib.pyplot as plt
 import quantecon as qe
 import numpy as np
-import scipy as sp
 from mpl_toolkits.mplot3d import Axes3D
 import numba
 ```
@@ -719,7 +718,9 @@ with the unit eigenvalue $ \lambda = 1$.
 
 Try writing a function that uses this information to compute the stationary distribution of $P$.
 
-You can use `scipy.linalg.eig` from SciPy.
+Note that you can get the left eigenvectors by computing the ordinary (right) eigenvectors of the transpose of $P$.
+
+Eigenvalues and eigenvectors can be obtained via `np.linalg.eig`.
 
 In the exercise you can assume that $P$ has only one stationary distribution, and you can test your function using
 
@@ -729,8 +730,8 @@ P = np.array([[0.4, 0.6],
 ```
 
 ```{code-cell} ipython3
-for i in range(12):
-    print("Solution below!")
+for i in range(16):
+    print("Solution below! 🦘")
 ```
 
 **Solution**
@@ -744,9 +745,10 @@ def compute_stationary_via_eigenvecs(P):
     The corresponding eigenvector is the stationary distribution.
     """
     P = np.array(P)
-    out = sp.linalg.eig(P, right=False)
-    i = np.argmax(out.eigenvalues)  # index of largest eigenvalue
-    dominant_eigvec = out.eigenvectors[:, i] 
+    out = np.linalg.eig(P.T)
+    eigvals, eigvecs = out.eigenvalues, out.eigenvectors
+    i = np.argmax(eigvals)  # index of largest eigenvalue
+    dominant_eigvec = eigvecs[:, i] 
     ψ_star = dominant_eigvec / np.sum(dominant_eigvec) # normalize
     return ψ_star
 ```
@@ -809,4 +811,6 @@ Here
 
 You might like to try experimenting with different initial conditions.
 
-+++
+```{code-cell} ipython3
+
+```
