@@ -19,216 +19,225 @@ kernelspec:
 
 +++
 
-This notebook contains a very quick introduction to Numba, as well as comparing Numba to NumPy.
+In the lecture on NumPy we saw that vectorization via NumPy can help accelerate our code.
 
-We use the following imports
+But
+
+* Vectorization can be very memory intensive.
+* NumPy-style vectorization cannot fully exploit parallel hardware (precompiled NumPy binaries cannot optimize on array size or over hardware accelerators).
+* Some problems cannot be vectorized --- they need to be written in loops.
+
+This notebook contains a very quick introduction to an alternative method for accelerating code, via 
+[Numba](https://numba.pydata.org/).
+
+We use the following imports:
 
 ```{code-cell} ipython3
----
-nbpresent:
-  id: cacd76f0-600a-4ac9-ba39-ae23747177c8
-slideshow:
-  slide_type: '-'
----
 import numpy as np
 from numba import vectorize, jit, float64   
-from quantecon.util import tic, toc
 import matplotlib.pyplot as plt
 ```
 
-## Vectorization
+## Example: Solow-Swan dynamics
+
+
+Here we look at one example of the last case and discuss how to accelerate it.
+
+### A loop in Python
+
+Let's suppose we are interested in the long-run behavior of capital stock in the stochasic
+Solow-Swan model
+
+$$
+    k_{t+1} = a_{t+1} s k_t^\alpha + (1-\delta)k_t 
+$$
+
+where $(a_t)$ is IID and uniform.
+
+Here's some code to generate a short time series, plus a plot.
+
+```{code-cell} ipython3
+α, s, δ, a = 0.4, 0.3, 0.1, 1.0
+n = 120
+k =  np.empty(n)
+k[0] = 0.2
+for t in range(n-1):
+    k[t+1] = np.random.rand() * s * k[t]**α + (1 - δ) * k[t]
+    
+fig, ax = plt.subplots()
+ax.plot(k, 'o-', ms=2, lw=1)
+ax.set_xlabel('time')
+ax.set_ylabel('capital')
+plt.show()
+```
+
+Let's say that we want to compute long-run average capital stock.
+
+```{code-cell} ipython3
+def solow(n=10_000_000, α=0.4, s=0.3, δ=0.1, k0=0.2):
+    k = k0
+    k_sum = k0
+    for t in range(n):
+        a = np.random.rand()
+        k = a * s * k**α + (1 - δ) * k
+        k_sum += k
+    return k_sum / n
+
+%time k = solow()
+print(f"Steady-state capital = {k}.")
+```
+
+Steady-state capital:
 
 +++
 
-In scripting languages, native loops are slow:
+Notice that the run-time is pretty slow.
+
+Also, we can't use NumPy to accelerate it because there's no way to vectorize the loop.
+
+Let's look at some alternatives.
+
++++
+
+### A Fortran version
+
+We can make it fast if we rewrite it in Fortran.
+
+To execute the following Fortran code on your machine, you need 
+
+* a Fortran compiler (such as the open source `gfortran` compiler) and also
+* the `fortranmagic` Jupyter extension, which can be installed by uncommenting
+
+```{code-cell} ipython3
+#!pip install fortran-magic
+```
+
+Now we load the extension (skip executing this and the rest of the section if you don't have a Fortran compiler).
+
+```{code-cell} ipython3
+%load_ext fortranmagic
+```
+
+In the following code, all parameters are the same as for the Python code above.
+
++++
+
+Now we add the cell magic ``%%fortran`` to a cell that contains a Fortran subroutine for the Solow-Swan computation:
+
+```{code-cell} ipython3
+%%fortran
+
+subroutine solow_fortran(k0, s, delta, alpha, n, kt)
+ implicit none
+ integer, parameter :: dp=kind(0.d0) 
+ integer, intent(in) :: n
+ real(dp), intent(in) :: k0, s, delta, alpha
+ real(dp), intent(out) :: kt
+ real(dp) :: k, k_sum, a
+ integer :: i
+ k = k0
+ k_sum = k0
+ call random_seed
+ do i = 1, n - 1      
+  call random_number(a)
+  k = a * s * k**alpha + (1 - delta) * k
+  k_sum = k_sum + k
+ end do
+ kt = k_sum / real(n)
+end subroutine solow_fortran 
+```
+
+Now we can call the function `solow_fortran` from Python.
+
+(`fortranmagic` uses a program called `F2Py` to create a Python "wrapper" for the Fortran subroutine so we can access it from within Python.)
+
+Let's make sure it gives the right answer.
 
 ```{code-cell} ipython3
 n = 10_000_000
-x_vec = np.linspace(0.1, 1.1, n)
+solow_fortran(0.2, s, δ, α, n)
 ```
 
-Let's say we want to compute the sum of of $\cos(2\pi / x)$ over $x$ in 
+Now let's time it:
 
 ```{code-cell} ipython3
-tic()
-current_sum = 0.0
-for x in x_vec:
-    current_sum += np.cos(2 * np.pi / x)
-toc()
+%time solow_fortran(0.2, s, δ, α, n)
 ```
 
-The reason is that Python, like most high level languages is dynamically typed.
-
-This means that the type of a variable can freely change.
-
-Moreover, the interpreter doesn't compile the whole program at once, so it doesn't know when types will change.
-
-So the interpreter has to check the type of variables before any operation like addition, comparison, etc.
-
-Hence there's a lot of fixed cost for each such operation
-
-+++
-
-The code runs much faster if we use **vectorized** expressions to avoid explicit loops.
+Let's time it more carefully, over multiple runs:
 
 ```{code-cell} ipython3
-tic()
-np.sum(np.cos(2 * np.pi / x_vec))
-toc()
+%timeit solow_fortran(0.2, s, δ, α, n)
 ```
 
-Now high level overheads are paid per *array* rather than per float or integer.
-
-+++
-
-#### Implict Multithreading
-
-+++
-
-Recent versions of Anaconda are compiled with Intel MKL support, which accelerates NumPy operations.
-
-+++
-
-Watch system resources when you run this code.  
-
-(For example, install `htop` (Linux / Mac), `perfmon` (Windows) or another system load monitor and set it running in another window.)
-
-```{code-cell} ipython3
-n = 20
-m = 1000
-for i in range(n):
-    X = np.random.randn(m, m)
-    λ = np.linalg.eigvals(X)
-```
-
-You should see all your cores light up.  With MKL, many matrix operations are automatically parallelized.
-
-+++
-
-### Problems with Vectorization
-
-+++
-
-Vectorization is neat but somewhat inflexible.
-
-Some problems cannot be vectorized and need to be written in loops.
-
-In other cases, loops are clearer than vectorized code.
+The speed gain is about 1 order of magnitude.
 
 +++
 
 ## Numba
 
-+++
+Now let's try the same thing in Python using Numba's JIT compilation.
 
-Numba circumvents some problems with vectorization by providing fast, efficient just-in-time compilation within Python.  
-
-+++
-
-Consider the time series model
-
-$$ x_{t+1} = \alpha x_t (1 - x_t) $$
-
-Let's set $\alpha = 4$
+We recall the Python function from above.
 
 ```{code-cell} ipython3
-α = 4.0
+def solow(n=10_000_000, α=0.4, s=0.3, δ=0.1, k0=0.2):
+    k =  k_sum = k0
+    for t in range(n-1):
+        a = np.random.rand()
+        k = a * s * k**α + (1 - δ) * k
+        k_sum += k
+    return k
 ```
 
-Here's a typical time series:
+Now let's flag it for JIT-compilation:
 
 ```{code-cell} ipython3
-n = 200
-x =  np.empty(n)
-x[0] = 0.2
-for t in range(n-1):
-    x[t+1] = α * x[t] * (1 - x[t])
-    
-plt.plot(x)
-plt.show()
+solow_jitted = jit(solow)
 ```
 
-Here's a function that simulates for `n` periods, starting from `x0`, and returns **only the final** value:
+And then run it:
 
 ```{code-cell} ipython3
-def quad(x0, n):
-    x = x0
-    for i in range(1, n):
-        x = α * x * (1 - x)
-    return x
-```
-
-Let's see how fast this runs:
-
-```{code-cell} ipython3
-n = 10_000_000
+%time k = solow_jitted()
 ```
 
 ```{code-cell} ipython3
-tic()
-x = quad(0.2, n)
-toc()
-```
-
-Now let's try this in FORTRAN.  In the following code, all parameters are the same as for the Python code above.
-
-```{code-cell} ipython3
-%%file fastquad.f90
-
-PURE FUNCTION QUAD(X0, N)
- IMPLICIT NONE
- INTEGER, PARAMETER :: DP=KIND(0.d0)                           
- REAL(dp), INTENT(IN) :: X0
- REAL(dp) :: QUAD
- INTEGER :: I
- INTEGER, INTENT(IN) :: N
- QUAD = X0
- DO I = 1, N - 1                                                
-  QUAD = 4.0_dp * QUAD * real(1.0_dp - QUAD, dp)
- END DO
- RETURN
-END FUNCTION QUAD
-
-PROGRAM MAIN
- IMPLICIT NONE
- INTEGER, PARAMETER :: DP=KIND(0.d0)                          
- REAL(dp) :: START, FINISH, X, QUAD
- INTEGER :: N
- N = 10000000
- X = QUAD(0.2_dp, 10)
- CALL CPU_TIME(START)
- X = QUAD(0.2_dp, N)
- CALL CPU_TIME(FINISH)
- PRINT *,'last val = ', X
- PRINT *,'elapsed time = ', FINISH-START
-END PROGRAM MAIN
-```
-
-**Note** The next step will only execute if you have a FORTRAN compiler installed and modify the compilation code below appropriately.
-
-If you don't then skip execution of the next two cells --- you can just look at my numbers.
-
-```{code-cell} ipython3
-!gfortran -O3 fastquad.f90
+%time k = solow_jitted()
 ```
 
 ```{code-cell} ipython3
-!./a.out
+%timeit k = solow_jitted()
 ```
 
-Now let's do the same thing in Python using Numba's JIT compilation:
+Hopefully we get the same value:
 
 ```{code-cell} ipython3
-quad_jitted = jit(quad)
+k
+```
+
+Here's the same thing using decorator notation.
+
+```{code-cell} ipython3
+@jit
+def solow(n=10_000_000, α=0.4, s=0.3, δ=0.1, k0=0.2):
+    k = k_sum = k0
+    for t in range(n-1):
+        a = np.random.rand()
+        k = a * s * k**α + (1 - δ) * k
+        k_sum += k
+    return k_sum / n
 ```
 
 ```{code-cell} ipython3
-tic()
-x = quad_jitted(0.2, n)
-toc()
+%time k = solow()
 ```
 
-After JIT compilation, function execution speed is about the same as Fortran (and Julia)
+```{code-cell} ipython3
+%time k = solow()
+```
+
+After JIT compilation, function execution speed is about the same as Fortran.
 
 +++
 
@@ -238,11 +247,13 @@ After JIT compilation, function execution speed is about the same as Fortran (an
 
 The secret sauce is type inference inside the function body.
 
-When we call `quad_jitted` with particular arguments, Numba's compiler works through the function body and infers the types of the variables inside the function.
+When we call `solow_jitted` with particular arguments, Numba's compiler works
+through the function body and infers the types of the variables inside the
+function.
 
 It then produces compiled code *specialized to that type signature*
 
-For example, we called `quad_jitted` with a `float, int` pair in the cell above and the compiler produced code specialized to those types.
+For example, we called `solow_jitted` with a `float, int` pair in the cell above and the compiler produced code specialized to those types.
 
 That code runs fast because the compiler can fully specialize all operations inside the function based on that information and hence write very efficient machine code.
 
@@ -250,10 +261,30 @@ That code runs fast because the compiler can fully specialize all operations ins
 
 #### Limitations of Numba
 
+Numba is great when it works but it can't compile functions that aren't
+themselves JIT compiled.
+
++++
+
+In practice, this means we can't use most third party libraries:
+
 ```{code-cell} ipython3
 from scipy.integrate import quad
 
+def compute_integral(n):
+    return quad(lambda x: x**(1/n), 0, 1)
+```
 
+This works fine if we don't jit the function.
+
+```{code-cell} ipython3
+compute_integral(4)
+```
+
+But if we do...
+
+```{code-cell} ipython3
+@jit
 def compute_integral(n):
     return quad(lambda x: x**(1/n), 0, 1)
         
@@ -263,37 +294,27 @@ def compute_integral(n):
 compute_integral(4)
 ```
 
-```{code-cell} ipython3
-@jit
-def compute_integral(n):
-    return quad(lambda x: x**(1/n), 0, 1)
-        
-```
+The reason is that the `quad` function is from SciPy and Numba doesn't know how
+to handle it.
 
-If we try to run `compute_integral` we will get an error.
+Key message: even though it might not be possible to JIT-compile your whole
+program, you might well be able to compile the hot loops that are eating up 99%
+of your computation time.
 
-```{code-cell} ipython3
-import traceback
-
-try:
-    compute_integral(4)
-except Exception:
-    print(traceback.format_exc())
-```
-
-The reason is that the `quad` function is from SciPy and Numba doesn't know how to handle it.
-
-This is the biggest problem with Numba.  A large suit of scientific tools aren't currently compatible.
-
-On the other hand, it's a problem that people are well aware of, and various people are racing to overcome.
-
-Second, even though it might not be possible to JIT-compile your whole program, you might well be able to compile the hot loops that are eating up 99% of your computation time.
-
-If you can do this, you open up large speed gains, as the following sections make clear.
+If you can do this, you open up large speed gains, as the following sections
+make clear.
 
 +++
 
 ### Vectorization vs Numba
+
++++
+
+We made the point above that some problems are hard or impossible to vectorize and, in these situations, that we can use Numba instead of NumPy to accelerate our code.
+
+However, there are also many situations where we *can* vectorize our code but Numba is still the better option.
+
+Let's look at an example.
 
 +++
 
@@ -357,16 +378,15 @@ x, y = np.meshgrid(grid, grid)
 nbpresent:
   id: 1ba9f9f9-f737-4ee1-86e6-0a33c4752188
 ---
-tic()
+%%time
 np.max(f(x, y))
-toc()
 ```
 
 #### JITTed code
 
 +++
 
-A jitted version
+A jitted version -- note the speed gain.
 
 ```{code-cell} ipython3
 @jit
@@ -381,15 +401,13 @@ def compute_max():
 ```
 
 ```{code-cell} ipython3
-tic()
+%%time
 compute_max()
-toc()
 ```
 
 ```{code-cell} ipython3
-tic()
+%%time
 compute_max()
-toc()
 ```
 
 #### JITTed, parallelized code: @vectorize
@@ -416,25 +434,18 @@ np.max(f_par(x, y))
 ```
 
 ```{code-cell} ipython3
-tic()
+%%time
 np.max(f_par(x, y))
-toc()
 ```
 
 ```{code-cell} ipython3
-tic()
+%%time
 np.max(f_par(x, y))
-toc()
 ```
 
-### Summary
+```{code-cell} ipython3
 
-+++
-
-We just scratched the surface of Numba goodness.  For further reading see:
-    
-* [the docs](http://numba.pydata.org/)
-* [this overview](http://matthewrocklin.com/blog/work/2018/01/30/the-case-for-numba)
+```
 
 ```{code-cell} ipython3
 
