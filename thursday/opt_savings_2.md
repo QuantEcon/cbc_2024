@@ -11,7 +11,6 @@ kernelspec:
   name: python3
 ---
 
-
 # Optimal Savings II: Alternative Algorithms
 
 -----
@@ -59,13 +58,13 @@ computation.
 
 Uncomment if necessary:
 
-```{code-cell} ipython3
+```{code-cell}
 !pip install quantecon
 ```
 
 We will use the following imports:
 
-```{code-cell} ipython3
+```{code-cell}
 import quantecon as qe
 import jax
 import jax.numpy as jnp
@@ -76,48 +75,48 @@ import time
 
 Let's check the GPU we are running.
 
-```{code-cell} ipython3
+```{code-cell}
 !nvidia-smi
 ```
 
 We'll use 64 bit floats to gain extra precision.
 
-```{code-cell} ipython3
+```{code-cell}
 jax.config.update("jax_enable_x64", True)
 ```
 
 ## Model primitives
 
+We start with a namedtuple to store parameters and arrays
+
+```{code-cell}
+Model = namedtuple('Model', ('β', 'R', 'γ', 'w_grid', 'y_grid', 'Q'))
+```
 
 The following code is repeated from `opt_savings_1`.
 
-```{code-cell} ipython3
+```{code-cell}
 def create_consumption_model(R=1.01,                    # Gross interest rate
                              β=0.98,                    # Discount factor
                              γ=2,                       # CRRA parameter
                              w_min=0.01,                # Min wealth
                              w_max=5.0,                 # Max wealth
-                             w_size=150,                # Grid side
+                             w_size=150,                # Grid size
                              ρ=0.9, ν=0.1, y_size=100): # Income parameters
     """
     A function that takes in parameters and returns parameters and grids 
     for the optimal savings problem.
     """
-    # Build grids and transition probabilities
     w_grid = jnp.linspace(w_min, w_max, w_size)
     mc = qe.tauchen(n=y_size, rho=ρ, sigma=ν)
-    y_grid, Q = jnp.exp(mc.state_values), mc.P
-    # Pack and return
-    params = β, R, γ
-    sizes = w_size, y_size
-    arrays = w_grid, y_grid, jnp.array(Q)
-    return params, sizes, arrays
+    y_grid, Q = jnp.exp(mc.state_values), jax.device_put(mc.P)
+    return Model(β, R, γ, w_grid, y_grid, Q)
 ```
 
 Here's the right hand side of the Bellman equation:
 
-```{code-cell} ipython3
-def _B(v, params, arrays, i, j, ip):
+```{code-cell}
+def _B(v, model, i, j, ip):
     """
     The right-hand side of the Bellman equation before maximization, which takes
     the form
@@ -126,8 +125,7 @@ def _B(v, params, arrays, i, j, ip):
 
     The indices are (i, j, ip) -> (w, y, w′).
     """
-    β, R, γ = params
-    w_grid, y_grid, Q = arrays
+    β, R, γ, w_grid, y_grid, Q = model
     w, y, wp  = w_grid[i], y_grid[j], w_grid[ip]
     c = R * w + y - wp
     EV = jnp.sum(v[ip, :] * Q[j, :]) 
@@ -136,21 +134,21 @@ def _B(v, params, arrays, i, j, ip):
 
 Now we successively apply `vmap` to vectorize $B$ by simulating nested loops.
 
-```{code-cell} ipython3
-B_1    = jax.vmap(_B,  in_axes=(None, None, None, None, None, 0))
-B_2    = jax.vmap(B_1, in_axes=(None, None, None, None, 0,    None))
-B_vmap = jax.vmap(B_2, in_axes=(None, None, None, 0,    None, None))
+```{code-cell}
+B_vmap = jax.vmap(_B,      in_axes=(None, None, None, None, 0))
+B_vmap = jax.vmap(B_vmap, in_axes=(None, None, None, 0,    None))
+B_vmap = jax.vmap(B_vmap, in_axes=(None, None, 0,    None, None))
 ```
 
 Here's a fully vectorized version of $B$.
 
-```{code-cell} ipython3
-def B(v, params, sizes, arrays):
-    w_size, y_size = sizes
+```{code-cell}
+@jax.jit
+def B(v, model):
+    β, R, γ, w_grid, y_grid, Q = model
+    w_size, y_size = len(w_grid), len(y_grid)
     w_indices, y_indices = jnp.arange(w_size), jnp.arange(y_size)
-    return B_vmap(v, params, arrays, w_indices, y_indices, w_indices)
-
-B = jax.jit(B, static_argnums=(2,))
+    return B_vmap(v, model, w_indices, y_indices, w_indices)
 ```
 
 ## Operators
@@ -158,23 +156,20 @@ B = jax.jit(B, static_argnums=(2,))
 
 Here's the Bellman operator $T$
 
-```{code-cell} ipython3
-def T(v, params, sizes, arrays):
+```{code-cell}
+@jax.jit
+def T(v, model):
     "The Bellman operator."
-    return jnp.max(B(v, params, sizes, arrays), axis=-1)
-
-T = jax.jit(T, static_argnums=(2,))
+    return jnp.max(B(v, model), axis=-1)
 ```
 
 The next function computes a $v$-greedy policy given $v$
 
-```{code-cell} ipython3
-def get_greedy(v, params, sizes, arrays):
+```{code-cell}
+@jax.jit
+def get_greedy(v, modeld):
     "Computes a v-greedy policy, returned as a set of indices."
-    return jnp.argmax(B(v, params, sizes, arrays), axis=-1)
-
-get_greedy = jax.jit(get_greedy, static_argnums=(2,))
-
+    return jnp.argmax(B(v, model), axis=-1)
 ```
 
 We define a function to compute the current rewards $r_\sigma$ given policy $\sigma$,
@@ -184,8 +179,8 @@ $$
     r_\sigma(w, y) := r(w, y, \sigma(w, y)) 
 $$
 
-```{code-cell} ipython3
-def _compute_r_σ(σ, params, arrays, i, j):
+```{code-cell}
+def _compute_r_σ(σ, model, i, j):
     """
     With indices (i, j) -> (w, y) and wp = σ[i, j], compute 
         
@@ -195,8 +190,7 @@ def _compute_r_σ(σ, params, arrays, i, j):
     """
 
     # Unpack model
-    β, R, γ = params
-    w_grid, y_grid, Q = arrays
+    β, R, γ, w_grid, y_grid, Q = model
     # Compute r_σ[i, j]
     w, y, wp = w_grid[i], y_grid[j], w_grid[σ[i, j]]
     c = R * w + y - wp
@@ -207,50 +201,49 @@ def _compute_r_σ(σ, params, arrays, i, j):
 
 Now we successively apply `vmap` to simulate nested loops.
 
-```{code-cell} ipython3
-r_1 = jax.vmap(_compute_r_σ,  in_axes=(None, None, None, None, 0))
-r_σ_vmap = jax.vmap(r_1,      in_axes=(None, None, None, 0,    None))
+```{code-cell}
+compute_r_σ_vmap = jax.vmap(_compute_r_σ,     in_axes=(None, None, None, 0))
+compute_r_σ_vmap = jax.vmap(compute_r_σ_vmap, in_axes=(None, None, 0,    None))
 ```
 
 Here's a fully vectorized version of $r_\sigma$.
 
-```{code-cell} ipython3
-def compute_r_σ(σ, params, sizes, arrays):
-    w_size, y_size = sizes
+```{code-cell}
+@jax.jit
+def compute_r_σ(σ, model):
+    β, R, γ, w_grid, y_grid, Q = model
+    w_size, y_size = len(w_grid), len(y_grid)
     w_indices, y_indices = jnp.arange(w_size), jnp.arange(y_size)
-    return r_σ_vmap(σ, params, arrays, w_indices, y_indices)
-
-compute_r_σ = jax.jit(compute_r_σ, static_argnums=(2,))
+    return compute_r_σ_vmap(σ, model, w_indices, y_indices)
 ```
 
 Now we define the policy operator $T_\sigma$ going through similar steps
 
-```{code-cell} ipython3
-def _T_σ(v, σ, params, arrays, i, j):
+```{code-cell}
+def _T_σ(v, σ, model, i, j):
     "The σ-policy operator."
 
     # Unpack model
-    β, R, γ = params
-    w_grid, y_grid, Q = arrays
+    β, R, γ, w_grid, y_grid, Q = model
 
-    r_σ  = _compute_r_σ(σ, params, arrays, i, j)
+    r_σ  = _compute_r_σ(σ, model, i, j)
     # Calculate the expected sum Σ_jp v[σ[i, j], jp] * Q[i, j, jp]
     EV = jnp.sum(v[σ[i, j], :] * Q[j, :])
 
     return r_σ + β * EV
 
 
-T_1 = jax.vmap(_T_σ,      in_axes=(None, None, None, None, None, 0))
-T_σ_vmap = jax.vmap(T_1,  in_axes=(None, None, None, None, 0,    None))
+T_σ_vmap = jax.vmap(_T_σ,     in_axes=(None, None, None, None, 0))
+T_σ_vmap = jax.vmap(T_σ_vmap, in_axes=(None, None, None, 0,    None))
 
-def T_σ(v, σ, params, sizes, arrays):
-    w_size, y_size = sizes
+
+@jax.jit
+def T_σ(v, σ, model):
+    β, R, γ, w_grid, y_grid, Q = model
+    w_size, y_size = len(w_grid), len(y_grid)
     w_indices, y_indices = jnp.arange(w_size), jnp.arange(y_size)
-    return T_σ_vmap(v, σ, params, arrays, w_indices, y_indices)
-
-T_σ = jax.jit(T_σ, static_argnums=(3,))
+    return T_σ_vmap(v, σ, model, w_indices, y_indices)
 ```
-
 
 The function below computes the value $v_\sigma$ of following policy $\sigma$.
 
@@ -284,8 +277,8 @@ $$
 JAX allows us to solve linear systems defined in terms of operators; the first
 step is to define the function $L_{\sigma}$.
 
-```{code-cell} ipython3
-def _L_σ(v, σ, params, arrays, i, j):
+```{code-cell}
+def _L_σ(v, σ, model, i, j):
     """
     Here we set up the linear map v -> L_σ v, where 
 
@@ -293,52 +286,39 @@ def _L_σ(v, σ, params, arrays, i, j):
 
     """
     # Unpack
-    β, R, γ = params
-    w_grid, y_grid, Q = arrays
+    β, R, γ, w_grid, y_grid, Q = model
     # Compute and return v[i, j] - β Σ_jp v[σ[i, j], jp] * Q[j, jp]
     return v[i, j]  - β * jnp.sum(v[σ[i, j], :] * Q[j, :])
 
-L_1 = jax.vmap(_L_σ,      in_axes=(None, None, None, None, None, 0))
-L_σ_vmap = jax.vmap(L_1,  in_axes=(None, None, None, None, 0,    None))
+L_σ_vmap = jax.vmap(_L_σ,     in_axes=(None, None, None, None, 0))
+L_σ_vmap = jax.vmap(L_σ_vmap, in_axes=(None, None, None, 0,    None))
 
-def L_σ(v, σ, params, sizes, arrays):
-    w_size, y_size = sizes
+@jax.jit
+def L_σ(v, σ, model):
+    β, R, γ, w_grid, y_grid, Q = model
+    w_size, y_size = len(w_grid), len(y_grid)
     w_indices, y_indices = jnp.arange(w_size), jnp.arange(y_size)
-    return L_σ_vmap(v, σ, params, arrays, w_indices, y_indices)
-
-L_σ = jax.jit(L_σ, static_argnums=(3,))
+    return L_σ_vmap(v, σ, model, w_indices, y_indices)
 ```
 
 Now we can define a function to compute $v_{\sigma}$
 
-```{code-cell} ipython3
-def get_value(σ, params, sizes, arrays):
+```{code-cell}
+@jax.jit
+def get_value(σ, model):
     "Get the value v_σ of policy σ by inverting the linear map L_σ."
 
-    # Unpack
-    β, R, γ = params
-    w_size, y_size = sizes
-    w_grid, y_grid, Q = arrays
-
-    r_σ = compute_r_σ(σ, params, sizes, arrays)
-
-    # Reduce L_σ to a function in v
-    partial_L_σ = lambda v: L_σ(v, σ, params, sizes, arrays)
-
+    r_σ = compute_r_σ(σ, model)
+    partial_L_σ = lambda v: L_σ(v, σ, model)
     return jax.scipy.sparse.linalg.bicgstab(partial_L_σ, r_σ)[0]
-
-get_value = jax.jit(get_value, static_argnums=(2,))
-
 ```
-
-
 
 ## Iteration
 
 
 We use successive approximation for VFI.
 
-```{code-cell} ipython3
+```{code-cell}
 def successive_approx_jax(T,                     # Operator (callable)
                           x_0,                   # Initial condition                
                           tol=1e-6,              # Error tolerance
@@ -363,20 +343,19 @@ successive_approx_jax = jax.jit(successive_approx_jax, static_argnums=(0,))
 
 For OPI we'll add a compiled routine that computes $T_σ^m v$.
 
-```{code-cell} ipython3
-def iterate_policy_operator(σ, v, m, params, sizes, arrays):
+```{code-cell}
+@jax.jit
+def iterate_policy_operator(σ, v, m, model):
 
     def update(i, v):
-        v = T_σ(v, σ, params, sizes, arrays)
+        v = T_σ(v, σ, model)
         return v
     
     v = jax.lax.fori_loop(0, m, update, v)
     return v
 
-iterate_policy_operator = jax.jit(iterate_policy_operator,
-                                  static_argnums=(4,))
-```
 
+```
 
 ## Solvers
 
@@ -384,28 +363,30 @@ Now we define the solvers, which implement VFI, HPI and OPI.
 
 Here's VFI.
 
-```{code-cell} ipython3
-def value_function_iteration(model, tol=1e-5):
+```{code-cell}
+def value_function_iteration(model, tol=1e-4):
     """
     Implements value function iteration.
     """
-    params, sizes, arrays = model
+    β, R, γ, w_grid, y_grid, Q = model
+    sizes = len(w_grid), len(y_grid)
     vz = jnp.zeros(sizes)
-    _T = lambda v: T(v, params, sizes, arrays)
+    _T = lambda v: T(v, model)
     v_star = successive_approx_jax(_T, vz, tol=tol)
-    return get_greedy(v_star, params, sizes, arrays)
+    return get_greedy(v_star, model)
 ```
 
 For OPI we will use a compiled JAX `lax.while_loop` operation to speed execution.
 
-
-```{code-cell} ipython3
-def opi_loop(params, sizes, arrays, m, tol, max_iter):
+```{code-cell}
+def opi_loop(model, m, tol, max_iter):
     """
     Implements optimistic policy iteration (see dp.quantecon.org) with 
     step size m.
 
     """
+    β, R, γ, w_grid, y_grid, Q = model
+    sizes = len(w_grid), len(y_grid)
     v_init = jnp.zeros(sizes)
 
     def condition_function(inputs):
@@ -415,8 +396,8 @@ def opi_loop(params, sizes, arrays, m, tol, max_iter):
     def update(inputs):
         i, v, error = inputs
         last_v = v
-        σ = get_greedy(v, params, sizes, arrays)
-        v = iterate_policy_operator(σ, v, m, params, sizes, arrays)
+        σ = get_greedy(v, model)
+        v = iterate_policy_operator(σ, v, m, model)
         error = jnp.max(jnp.abs(v - last_v))
         i += 1
         return i, v, error
@@ -425,36 +406,35 @@ def opi_loop(params, sizes, arrays, m, tol, max_iter):
                                             update,
                                             (0, v_init, tol + 1))
 
-    return get_greedy(v, params, sizes, arrays)
+    return get_greedy(v, model)
 
 opi_loop = jax.jit(opi_loop, static_argnums=(1,))
 ```
 
 Here's a friendly interface to OPI
 
-```{code-cell} ipython3
-def optimistic_policy_iteration(model, m=10, tol=1e-5, max_iter=10_000):
-    params, sizes, arrays = model
-    σ_star = opi_loop(params, sizes, arrays, m, tol, max_iter)
+```{code-cell}
+def optimistic_policy_iteration(model, m=10, tol=1e-4, max_iter=10_000):
+    σ_star = opi_loop(model, m, tol, max_iter)
     return σ_star
 ```
 
-
 Here's HPI.
 
-```{code-cell} ipython3
-def howard_policy_iteration(model, maxiter=250):
+```{code-cell}
+def howard_policy_iteration(model, tol=1e-4, maxiter=250):
     """
     Implements Howard policy iteration (see dp.quantecon.org)
     """
-    params, sizes, arrays = model
-    σ = jnp.zeros(sizes, dtype=int)
+    β, R, γ, w_grid, y_grid, Q = model
+    sizes = len(w_grid), len(y_grid)
+    v_σ = jnp.zeros(sizes)
     i, error = 0, 1.0
-    while error > 0 and i < maxiter:
-        v_σ = get_value(σ, params, sizes, arrays)
-        σ_new = get_greedy(v_σ, params, sizes, arrays)
-        error = jnp.max(jnp.abs(σ_new - σ))
-        σ = σ_new
+    while error > tol and i < maxiter:
+        σ = get_greedy(v_σ, model)
+        v_σ_new = get_value(σ, model)
+        error = jnp.max(jnp.abs(v_σ_new - v_σ))
+        v_σ = v_σ_new
         i = i + 1
         print(f"Concluded loop {i} with error {error}.")
     return σ
@@ -464,16 +444,12 @@ def howard_policy_iteration(model, maxiter=250):
 
 Create a model for consumption, perform policy iteration, and plot the resulting optimal policy function.
 
-```{code-cell} ipython3
+```{code-cell}
 model = create_consumption_model()
-# Unpack
-params, sizes, arrays = model
-β, R, γ = params
-w_size, y_size = sizes
-w_grid, y_grid, Q = arrays
+β, R, γ, w_grid, y_grid, Q = model
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 σ_star = howard_policy_iteration(model)
 
 fig, ax = plt.subplots()
@@ -488,14 +464,14 @@ plt.show()
 
 Let's create an instance of the model.
 
-```{code-cell} ipython3
+```{code-cell}
 model = create_consumption_model()
 ```
 
 Here's a function that runs any one of the algorithms and returns the result and
 elapsed time.
 
-```{code-cell} ipython3
+```{code-cell}
 def run_algorithm(algorithm, model, **kwargs):
     start_time = time.time()
     result = algorithm(model, **kwargs)
@@ -509,70 +485,69 @@ Here's a quick test of each model.
 
 HPI first run:
 
-```{code-cell} ipython3
+```{code-cell}
 σ_pi, pi_time = run_algorithm(howard_policy_iteration, 
                               model)
 ```
 
 HPI second run:
 
-```{code-cell} ipython3
+```{code-cell}
 σ_pi, pi_time = run_algorithm(howard_policy_iteration, 
                               model)
 ```
 
 VFI first run:
 
-```{code-cell} ipython3
+```{code-cell}
 print("Starting VFI.")
 σ_vfi, vfi_time = run_algorithm(value_function_iteration, 
-                                model, tol=1e-5)
+                                model, tol=1e-4)
 ```
 
 VFI second run:
 
-```{code-cell} ipython3
+```{code-cell}
 print("Starting VFI.")
 σ_vfi, vfi_time = run_algorithm(value_function_iteration, 
-                                model, tol=1e-5)
+                                model, tol=1e-4)
 ```
 
 OPI first run:
 
-```{code-cell} ipython3
+```{code-cell}
 m = 100
 print(f"Starting OPI with $m = {m}$.")
 σ_opi, opi_time = run_algorithm(optimistic_policy_iteration, 
-                                model, m=m, tol=1e-5)
+                                model, m=m, tol=1e-4)
 ```
 
 OPI second run:
 
-```{code-cell} ipython3
+```{code-cell}
 m = 100
 print(f"Starting OPI with $m = {m}$.")
 σ_opi, opi_time = run_algorithm(optimistic_policy_iteration, 
-                                model, m=m, tol=1e-5)
+                                model, m=m, tol=1e-4)
 ```
-
 
 Now let's run OPI at a range of $m$ values and plot the execution time along
 side the execution time for VFI and HPI.
 
-```{code-cell} ipython3
+```{code-cell}
 σ_pi, pi_time = run_algorithm(howard_policy_iteration, model)
-σ_vfi, vfi_time = run_algorithm(value_function_iteration, model, tol=1e-5)
+σ_vfi, vfi_time = run_algorithm(value_function_iteration, model, tol=1e-4)
 m_vals = range(5, 600, 40)
 opi_times = []
 for m in m_vals:
     σ_opi, opi_time = run_algorithm(optimistic_policy_iteration, 
-                                    model, m=m, tol=1e-5)
+                                    model, m=m, tol=1e-4)
     opi_times.append(opi_time)
 ```
 
 Here's the plot.
 
-```{code-cell} ipython3
+```{code-cell}
 fig, ax = plt.subplots()
 ax.plot(m_vals, 
         jnp.full(len(m_vals), pi_time), 

@@ -165,7 +165,7 @@ is higher than the value of continuing.
 ```{code-cell} ipython3
 @jax.jit
 def get_greedy(v, model):
-    " Get a v-greedy policy."
+    "Get a v-greedy policy."
     n, w_vals, P, β, c = model
     e = w_vals / (1 - β)
     h = c + β * P @ v
@@ -244,6 +244,7 @@ ax.legend(frameon=False, fontsize=12, loc="lower right")
 ax.set_xlabel("$w$", fontsize=12)
 plt.show()
 ```
+
 
 ## Exercise
 

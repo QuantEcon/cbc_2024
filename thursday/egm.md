@@ -37,6 +37,7 @@ Let's run some imports
 
 ```{code-cell} ipython3
 import quantecon as qe
+from collections import namedtuple
 import matplotlib.pyplot as plt
 import numpy as np
 import jax
@@ -55,7 +56,6 @@ We use 64 bit floating point numbers for extra precision.
 ```{code-cell} ipython3
 jax.config.update("jax_enable_x64", True)
 ```
-
 
 ## Setup 
 
@@ -92,9 +92,13 @@ $$
     u(c) = \frac{c^{1 - \gamma}} {1 - \gamma}
 $$
 
+We start with a namedtuple to store parameters and arrays
+
+```{code-cell} ipython3
+Model = namedtuple('Model', ('β', 'R', 'γ', 's_grid', 'y_grid', 'P'))
+```
 
 The following function stores default parameter values for the income fluctuation problem and creates suitable arrays.
-
 
 ```{code-cell} ipython3
 def ifp(R=1.01,             # Gross interest rate
@@ -109,19 +113,13 @@ def ifp(R=1.01,             # Gross interest rate
     # require R β < 1 for convergence
     assert R * β < 1, "Stability condition failed."
 
-    # Create income Markov chain
+    # Create arrays
     mc = qe.tauchen(y_size, ρ, ν)
-    y_grid, P = jnp.exp(mc.state_values), mc.P
-
-    # Shift to JAX arrays
-    P, y_grid = jax.device_put((P, y_grid))
+    y_grid, P = jnp.exp(mc.state_values), jnp.array(mc.P)
     s_grid = jnp.linspace(0, s_max, s_size)
 
     # Pack and return
-    constants = β, R, γ
-    sizes = s_size, y_size
-    arrays = s_grid, y_grid, P
-    return constants, sizes, arrays
+    return Model(β, R, γ, s_grid, y_grid, P)
 ```
 
 ### Solution method
@@ -313,16 +311,13 @@ Notice in the code below that
 * the function is pure (no globals, no mutation of inputs)
 
 ```{code-cell} ipython3
-def K_egm(a_in, σ_in, constants, sizes, arrays):
-    """
-    The vectorized operator K using EGM.
-
-    """
+@jax.jit
+def K_egm_jax(a_vec, σ, model):
+    "The vectorized operator K using EGM."
     
     # Unpack
-    β, R, γ = constants
-    s_size, y_size = sizes
-    s_grid, y_grid, P = arrays
+    β, R, γ, s_grid, y_grid, P = model
+    s_size, y_size = len(s_grid), len(y_grid)
     
     def u_prime(c):
         return c**(-γ)
@@ -331,9 +326,9 @@ def K_egm(a_in, σ_in, constants, sizes, arrays):
             return u**(-1/γ)
 
     # Linearly interpolate σ(a, y)
-    def σ(a, y):
-        return jnp.interp(a, a_in[:, y], σ_in[:, y])
-    σ_vec = jnp.vectorize(σ)
+    def σ_f(a, y):
+        return jnp.interp(a, a_vec[:, y], σ[:, y])
+    σ_vec = jnp.vectorize(σ_f)
 
     # Broadcast and vectorize
     y_hat = jnp.reshape(y_grid, (1, 1, y_size))
@@ -361,28 +356,22 @@ def K_egm(a_in, σ_in, constants, sizes, arrays):
     return a_out, σ_out
 ```
 
-Then we use `jax.jit` to compile $K$.
-
-We use `static_argnums` to allow a recompile whenever `sizes` changes, since the compiler likes to specialize on shapes.
-
 ```{code-cell} ipython3
-K_egm_jax = jax.jit(K_egm, static_argnums=(3,))
+
 ```
 
 Next we define a successive approximator that repeatedly applies $K$.
 
 ```{code-cell} ipython3
 def successive_approx_jax(model,        
-            tol=1e-5,
-            max_iter=100_000,
-            verbose=True,
-            print_skip=25):
+                          tol=1e-5,
+                          max_iter=100_000,
+                          verbose=True,
+                          print_skip=25):
 
     # Unpack
-    constants, sizes, arrays = model
-    β, R, γ = constants
-    s_size, y_size = sizes
-    s_grid, y_grid, P = arrays
+    β, R, γ, s_grid, y_grid, P = model
+    s_size, y_size = len(s_grid), len(y_grid)
     
     # Initial condition is to consume all in every state
     σ_init = jnp.repeat(s_grid, y_size)
@@ -394,7 +383,7 @@ def successive_approx_jax(model,
     error = tol + 1
 
     while i < max_iter and error > tol:
-        a_new, σ_new = K_egm_jax(a_vec, σ_vec, constants, sizes, arrays)    
+        a_new, σ_new = K_egm_jax(a_vec, σ_vec, model)    
         error = jnp.max(jnp.abs(σ_vec - σ_new))
         i += 1
         if verbose and i % print_skip == 0:
@@ -421,16 +410,12 @@ model and run the cross-check.
 
 ```{code-cell} ipython3
 @numba.jit
-def K_egm_nb(a_in, σ_in, constants, sizes, arrays):
-    """
-    The operator K using Numba.
+def K_egm_nb(a_vec, σ, model):
+    "The operator K using Numba."
 
-    """
-    
-    # Simplify names
-    β, R, γ = constants
-    s_size, y_size = sizes
-    s_grid, y_grid, P = arrays
+    # Unpack
+    β, R, γ, s_grid, y_grid, P = model
+    s_size, y_size = len(s_grid), len(y_grid)
 
     def u_prime(c):
         return c**(-γ)
@@ -439,11 +424,11 @@ def K_egm_nb(a_in, σ_in, constants, sizes, arrays):
         return u**(-1/γ)
 
     # Linear interpolation of policy using endogenous grid
-    def σ(a, z):
-        return np.interp(a, a_in[:, z], σ_in[:, z])
+    def σ_f(a, z):
+        return np.interp(a, a_vec[:, z], σ[:, z])
     
     # Allocate memory for new consumption array
-    σ_out = np.zeros_like(σ_in)
+    σ_out = np.zeros_like(σ)
     a_out = np.zeros_like(σ_out)
     
     for i, s in enumerate(s_grid[1:]):
@@ -451,7 +436,7 @@ def K_egm_nb(a_in, σ_in, constants, sizes, arrays):
         for z in range(y_size):
             expect = 0.0
             for z_hat in range(y_size):
-                expect += u_prime(σ(R * s + y_grid[z_hat], z_hat)) * \
+                expect += u_prime(σ_f(R * s + y_grid[z_hat], z_hat)) * \
                             P[z, z_hat]
             c = u_prime_inv(β * R * expect)
             σ_out[i, z] = c
@@ -462,17 +447,17 @@ def K_egm_nb(a_in, σ_in, constants, sizes, arrays):
 
 ```{code-cell} ipython3
 def successive_approx_numba(model,        # Class with model information
-                              tol=1e-5,
-                              max_iter=100_000,
-                              verbose=True,
-                              print_skip=25):
+                            tol=1e-5,
+                            max_iter=100_000,
+                            verbose=True,
+                            print_skip=25):
 
     # Unpack
-    constants, sizes, arrays = model
-    s_size, y_size = sizes
+    β, R, γ, s_grid, y_grid, P = model
+    s_size, y_size = len(s_grid), len(y_grid)
+
     # make NumPy versions of arrays
-    arrays = tuple(map(np.array, arrays))
-    s_grid, y_grid, P = arrays
+    s_grid, y_grid, P = [np.array(x) for x in (s_grid, y_grid, P)]
     
     σ_init = np.repeat(s_grid, y_size)
     σ_init = np.reshape(σ_init, (s_size, y_size))
@@ -484,7 +469,7 @@ def successive_approx_numba(model,        # Class with model information
     error = tol + 1
 
     while i < max_iter and error > tol:
-        a_new, σ_new = K_egm_nb(a_vec, σ_vec, constants, sizes, arrays)
+        a_new, σ_new = K_egm_nb(a_vec, σ_vec, model)
         error = np.max(np.abs(σ_vec - σ_new))
         i += 1
         if verbose and i % print_skip == 0:
@@ -498,9 +483,6 @@ def successive_approx_numba(model,        # Class with model information
 
     return a_new, σ_new
 ```
-
-
-
 
 ## Solutions
 
@@ -531,11 +513,8 @@ a_star_egm_nb, σ_star_egm_nb = successive_approx_numba(model,
 Now let's check the outputs in a plot to make sure they are the same.
 
 ```{code-cell} ipython3
-constants, sizes, arrays = model
-β, R, γ = constants
-s_size, y_size = sizes
-s_grid, y_grid, P = arrays
-
+β, R, γ, s_grid, y_grid, P = model
+s_size, y_size = len(s_grid), len(y_grid)
 
 fig, ax = plt.subplots()
 

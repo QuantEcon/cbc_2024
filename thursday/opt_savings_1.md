@@ -107,8 +107,14 @@ rough comparison with MATLAB.)
 
 ### Functions and operators
 
-The following function contains default parameters and returns tuples that
-contain the key computational components of the model.
+We start with a namedtuple to store parameters and arrays
+
+```{code-cell} ipython3
+Model = namedtuple('Model', ('β', 'R', 'γ', 'w_grid', 'y_grid', 'Q'))
+```
+
+The following function contains default parameters and returns a namedtuple
+that contain the key computational components of the model.
 
 ```{code-cell} ipython3
 def create_consumption_model(R=1.01,                    # Gross interest rate
@@ -127,14 +133,8 @@ def create_consumption_model(R=1.01,                    # Gross interest rate
     mc = qe.tauchen(n=y_size, rho=ρ, sigma=ν)
     y_grid, Q = np.exp(mc.state_values), mc.P
     # Pack and return
-    params = β, R, γ
-    sizes = w_size, y_size
-    arrays = w_grid, y_grid, Q
-    return params, sizes, arrays
+    return Model(β, R, γ, w_grid, y_grid, Q)
 ```
-
-(The function returns sizes of arrays because we use them later to help
-compile functions in JAX.)
 
 To produce efficient NumPy code, we will use a vectorized approach. 
 
@@ -142,7 +142,7 @@ The first step is to create the right hand side of the Bellman equation as a
 multi-dimensional array with dimensions over all states and controls.
 
 ```{code-cell} ipython3
-def B(v, params, sizes, arrays):
+def B(v, model):
     """
     A vectorized version of the right-hand side of the Bellman equation
     (before maximization), which is a 3D array representing
@@ -153,9 +153,8 @@ def B(v, params, sizes, arrays):
     """
 
     # Unpack
-    β, R, γ = params
-    w_size, y_size = sizes
-    w_grid, y_grid, Q = arrays
+    β, R, γ, w_grid, y_grid, Q = model
+    w_size, y_size = len(w_grid), len(y_grid)
 
     # Compute current rewards r(w, y, wp) as array r[i, j, ip]
     w  = np.reshape(w_grid, (w_size, 1, 1))    # w[i]   ->  w[i, j, ip]
@@ -180,13 +179,13 @@ The second computes a $v$-greedy policy given $v$ (i.e., the policy that
 maximizes the right-hand side of the Bellman equation.)
 
 ```{code-cell} ipython3
-def T(v, params, sizes, arrays):
+def T(v, model):
     "The Bellman operator."
-    return np.max(B(v, params, sizes, arrays), axis=2)
+    return np.max(B(v, model), axis=2)
 
-def get_greedy(v, params, sizes, arrays):
+def get_greedy(v, model):
     "Computes a v-greedy policy, returned as a set of indices."
-    return np.argmax(B(v, params, sizes, arrays), axis=2)
+    return np.argmax(B(v, model), axis=2)
 ```
 
 ### Value function iteration
@@ -195,15 +194,17 @@ Here's a routine that performs value function iteration.
 
 ```{code-cell} ipython3
 def value_function_iteration(model, max_iter=10_000, tol=1e-5):
-    params, sizes, arrays = model
-    v = np.zeros(sizes)
+    β, R, γ, w_grid, y_grid, Q = model
+    w_size, y_size = len(w_grid), len(y_grid)
+    v = np.zeros((w_size, y_size))
+
     i, error = 0, tol + 1
     while error > tol and i < max_iter:
-        v_new = T(v, params, sizes, arrays)
+        v_new = T(v, model)
         error = np.max(np.abs(v_new - v))
         i += 1
         v = v_new
-    return v, get_greedy(v, params, sizes, arrays)
+    return v, get_greedy(v, model)
 ```
 
 Now we create an instance, unpack it, and test how long it takes to solve the
@@ -211,11 +212,8 @@ model.
 
 ```{code-cell} ipython3
 model = create_consumption_model()
-# Unpack
-params, sizes, arrays = model
-β, R, γ = params
-w_size, y_size = sizes
-w_grid, y_grid, Q = arrays
+β, R, γ, w_grid, y_grid, Q = model
+w_size, y_size = len(w_grid), len(y_grid)
 
 print("Starting VFI on the CPU using NumPy.")
 start_time = time.time()
@@ -260,15 +258,15 @@ def create_consumption_model(R=1.01,                    # Gross interest rate
     w_grid = jnp.linspace(w_min, w_max, w_size)
     mc = qe.tauchen(n=y_size, rho=ρ, sigma=ν)
     y_grid, Q = jnp.exp(mc.state_values), jax.device_put(mc.P)
-    sizes = w_size, y_size
-    return (β, R, γ), sizes, (w_grid, y_grid, Q)
+    return Model(β, R, γ, w_grid, y_grid, Q)
 ```
 
 The right hand side of the Bellman equation is the same as the NumPy version
 after switching `np` to `jnp`.
 
 ```{code-cell} ipython3
-def B(v, params, sizes, arrays):
+@jax.jit
+def B(v, model):
     """
     A vectorized version of the right-hand side of the Bellman equation
     (before maximization), which is a 3D array representing
@@ -279,9 +277,8 @@ def B(v, params, sizes, arrays):
     """
 
     # Unpack
-    β, R, γ = params
-    w_size, y_size = sizes
-    w_grid, y_grid, Q = arrays
+    β, R, γ, w_grid, y_grid, Q = model
+    w_size, y_size = len(w_grid), len(y_grid)
 
     # Compute current rewards r(w, y, wp) as array r[i, j, ip]
     w  = jnp.reshape(w_grid, (w_size, 1, 1))    # w[i]   ->  w[i, j, ip]
@@ -306,32 +303,25 @@ Could they be avoided by more careful vectorization?
 In fact this is not necessary: this function will be JIT-compiled by JAX, and
 the JIT compiler will optimize compiled code to minimize memory use.
 
-```{code-cell} ipython3
-B = jax.jit(B, static_argnums=(2,))
-```
-
-In the call above, we indicate to the compiler that `sizes` is static, so the
-compiler can parallelize optimally while taking array sizes as fixed.
++++
 
 The Bellman operator $T$ can be implemented by
 
 ```{code-cell} ipython3
-def T(v, params, sizes, arrays):
+@jax.jit
+def T(v, model):
     "The Bellman operator."
-    return jnp.max(B(v, params, sizes, arrays), axis=2)
-
-T = jax.jit(T, static_argnums=(2,))
+    return jnp.max(B(v, model), axis=2)
 ```
 
 The next function computes a $v$-greedy policy given $v$ (i.e., the policy that
 maximizes the right-hand side of the Bellman equation.)
 
 ```{code-cell} ipython3
-def get_greedy(v, params, sizes, arrays):
+@jax.jit
+def get_greedy(v, model):
     "Computes a v-greedy policy, returned as a set of indices."
-    return jnp.argmax(B(v, params, sizes, arrays), axis=2)
-
-get_greedy = jax.jit(get_greedy, static_argnums=(2,))
+    return jnp.argmax(B(v, model), axis=2)
 ```
 
 ### Successive approximation
@@ -367,8 +357,7 @@ def successive_approx_jax(T,                     # Operator (callable)
     i, x, error = jax.lax.while_loop(cond_fun, body_fun, initial_state)
     return x
 
-successive_approx_jax = \
-    jax.jit(successive_approx_jax, static_argnums=(0,))
+successive_approx_jax = jax.jit(successive_approx_jax, static_argnums=(0,))
 ```
 
 Our value function iteration routine calls `successive_approx_jax` while passing
@@ -376,30 +365,25 @@ in the Bellman operator.
 
 ```{code-cell} ipython3
 def value_function_iteration(model, tol=1e-5):
-    params, sizes, arrays = model
-    v_0 = jnp.zeros(sizes)
-    _T = lambda v: T(v, params, sizes, arrays)
-    v_star = successive_approx_jax(_T, v_0, tolerance=tol)
-    return v_star, get_greedy(v_star, params, sizes, arrays)
+    β, R, γ, w_grid, y_grid, Q = model
+    w_size, y_size = len(w_grid), len(y_grid)
+    v_0 = jnp.zeros((w_size, y_size))
+    v_star = successive_approx_jax(lambda v: T(v, model), v_0, tolerance=tol)
+    return v_star, get_greedy(v_star, model)
 ```
 
 ### Timing
 
-Let's create an instance and unpack it.
+Let's create an instance for the test
 
 ```{code-cell} ipython3
 model = create_consumption_model()
-# Unpack
-params, sizes, arrays = model
-β, R, γ = params
-w_size, y_size = sizes
-w_grid, y_grid, Q = arrays
 ```
 
 Let's see how long it takes to solve this model.
 
 ```{code-cell} ipython3
-print("Starting VFI on the GPU using vectorization.")
+print("Starting VFI using JAX / vectorization.")
 start_time = time.time()
 v_star_jax, σ_star_jax = value_function_iteration(model)
 jax_elapsed = time.time() - start_time
@@ -409,7 +393,7 @@ print(f"VFI completed in {jax_elapsed} seconds.")
 One more time:
 
 ```{code-cell} ipython3
-print("Starting VFI on the GPU using vectorization.")
+print("Starting VFI on using JAX / vectorization.")
 start_time = time.time()
 v_star_jax, σ_star_jax = value_function_iteration(model)
 jax_elapsed = time.time() - start_time
@@ -443,7 +427,7 @@ Here's a version that
 First let's rewrite `B`
 
 ```{code-cell} ipython3
-def B(v, params, arrays, i, j, ip):
+def B(v, model, i, j, ip):
     """
     The right-hand side of the Bellman equation before maximization, which takes
     the form
@@ -452,8 +436,7 @@ def B(v, params, arrays, i, j, ip):
 
     The indices are (i, j, ip) -> (w, y, w′).
     """
-    β, R, γ = params
-    w_grid, y_grid, Q = arrays
+    β, R, γ, w_grid, y_grid, Q = model
     w, y, wp  = w_grid[i], y_grid[j], w_grid[ip]
     c = R * w + y - wp
     EV = jnp.sum(v[ip, :] * Q[j, :]) 
@@ -463,48 +446,51 @@ def B(v, params, arrays, i, j, ip):
 Now we successively apply `vmap` to simulate nested loops.
 
 ```{code-cell} ipython3
-B_1    = jax.vmap(B,   in_axes=(None, None, None, None, None, 0))
-B_2    = jax.vmap(B_1, in_axes=(None, None, None, None, 0,    None))
-B_vmap = jax.vmap(B_2, in_axes=(None, None, None, 0,    None, None))
+B = jax.vmap(B, in_axes=(None, None, None, None, 0))
+B = jax.vmap(B, in_axes=(None, None, None, 0,    None))
+B = jax.vmap(B, in_axes=(None, None, 0,    None, None))
 ```
 
 Here's the Bellman operator and the `get_greedy` functions for the `vmap` case.
 
 ```{code-cell} ipython3
-def T_vmap(v, params, sizes, arrays):
+@jax.jit
+def T_vmap(v, model):
     "The Bellman operator."
-    w_size, y_size = sizes
+    β, R, γ, w_grid, y_grid, Q = model
+    w_size, y_size = len(w_grid), len(y_grid)
     w_indices, y_indices = jnp.arange(w_size), jnp.arange(y_size)
-    B_values = B_vmap(v, params, arrays, w_indices, y_indices, w_indices)
+    B_values = B(v, model, w_indices, y_indices, w_indices)
     return jnp.max(B_values, axis=-1)
 
-T_vmap = jax.jit(T_vmap, static_argnums=(2,))
 
-def get_greedy_vmap(v, params, sizes, arrays):
+@jax.jit
+def get_greedy_vmap(v, model):
     "Computes a v-greedy policy, returned as a set of indices."
-    w_size, y_size = sizes
+    β, R, γ, w_grid, y_grid, Q = model
+    w_size, y_size = len(w_grid), len(y_grid)
     w_indices, y_indices = jnp.arange(w_size), jnp.arange(y_size)
-    B_values = B_vmap(v, params, arrays, w_indices, y_indices, w_indices)
+    B_values = B_vmap(v, model, w_indices, y_indices, w_indices)
     return jnp.argmax(B_values, axis=-1)
 
-get_greedy_vmap = jax.jit(get_greedy_vmap, static_argnums=(2,))
 ```
 
 Here's the iteration routine.
 
 ```{code-cell} ipython3
 def value_iteration_vmap(model, tol=1e-5):
-    params, sizes, arrays = model
-    vz = jnp.zeros(sizes)
-    _T = lambda v: T_vmap(v, params, sizes, arrays)
+    β, R, γ, w_grid, y_grid, Q = model
+    w_size, y_size = len(w_grid), len(y_grid)
+    vz = jnp.zeros((w_size, y_size))
+    _T = lambda v: T_vmap(v, model)
     v_star = successive_approx_jax(_T, vz, tolerance=tol)
-    return v_star, get_greedy(v_star, params, sizes, arrays)
+    return v_star, get_greedy(v_star, model)
 ```
 
 Let's see how long it takes to solve the model using the `vmap` method.
 
 ```{code-cell} ipython3
-print("Starting VFI on the GPU using vmap.")
+print("Starting VFI using JAX / vmap.")
 start_time = time.time()
 v_star_vmap, σ_star_vmap = value_iteration_vmap(model)
 jax_vmap_elapsed = time.time() - start_time
@@ -514,7 +500,7 @@ print(f"VFI completed in {jax_vmap_elapsed} seconds.")
 One more time:
 
 ```{code-cell} ipython3
-print("Starting VFI on the GPU using vmap.")
+print("Starting VFI using JAX / vmap.")
 start_time = time.time()
 v_star_vmap, σ_star_vmap = value_iteration_vmap(model)
 jax_vmap_elapsed = time.time() - start_time
@@ -569,6 +555,14 @@ Try solving the model under these preferences, using parameter values contained 
 
 After generating a solution, plot the policy functions in a plot similar to the one given above (for policy functions with CRRA preferences).
 
++++
+
+We start with a namedtuple to store parameters and arrays
+
+```{code-cell} ipython3
+Model = namedtuple('Model', ('β', 'R', 'γ', 'δ', 'w_grid', 'y_grid', 'Q'))
+```
+
 ```{code-cell} ipython3
 def create_ez_model(R=1.01,                    # Gross interest rate
                     β=0.96,                    # Discount factor
@@ -588,10 +582,7 @@ def create_ez_model(R=1.01,                    # Gross interest rate
     y_grid, Q = np.exp(mc.state_values), mc.P
     y_grid, Q = [jnp.array(v) for v in (y_grid, Q)]
     # Pack and return
-    params = β, R, γ, δ
-    sizes = w_size, y_size
-    arrays = w_grid, y_grid, Q
-    return params, sizes, arrays
+    return Model(β, R, γ, δ, w_grid, y_grid, Q)
 ```
 
 ```{code-cell} ipython3
@@ -606,17 +597,12 @@ for i in range(16):
 ## Solution
 
 ```{code-cell} ipython3
-def B_ez(v, params, arrays, i, j, ip):
+def B_ez(v, model, i, j, ip):
     """
-    The right-hand side of the Bellman equation before maximization, which takes
-    the form
-
-        B(w, y, l, w′) = {c^δ + β [ Σ_y′ v(w′, y′)^γ Q(y, y′) ]^(δ/γ) }^(1/δ)
-
-    where c  = Rw + y - w′. The indices are (i, j, ip) -> (w, y, w′).
+    The right-hand side of the Bellman equation before maximization.
+    The indices are (i, j, ip) -> (w, y, w′).
     """
-    β, R, γ, δ = params
-    w_grid, y_grid, Q = arrays
+    β, R, γ, δ, w_grid, y_grid, Q = model
     w, y, wp = w_grid[i], y_grid[j], w_grid[ip]
     c = R * w + y - wp
     RV = (jnp.sum(v[ip, :]**γ * Q[j, :]))**(1/γ)
@@ -626,55 +612,50 @@ def B_ez(v, params, arrays, i, j, ip):
 Now we successively apply `vmap` to simulate nested loops.
 
 ```{code-cell} ipython3
-B_ez_1    = jax.vmap(B_ez,   in_axes=(None, None, None, None, None, 0))
-B_ez_2    = jax.vmap(B_ez_1, in_axes=(None, None, None, None, 0,    None))
-B_ez_vmap = jax.vmap(B_ez_2, in_axes=(None, None, None, 0,    None, None))
+B_ez = jax.vmap(B_ez, in_axes=(None, None, None, None, 0))
+B_ez = jax.vmap(B_ez, in_axes=(None, None, None, 0,    None))
+B_ez = jax.vmap(B_ez, in_axes=(None, None, 0,    None, None))
 ```
 
 Here's the Bellman operator and the `get_greedy` functions.
 
 ```{code-cell} ipython3
-def T_ez_vmap(v, params, sizes, arrays):
+@jax.jit
+def T_ez(v, model):
     "The Bellman operator."
-    w_size, y_size = sizes
+    β, R, γ, δ, w_grid, y_grid, Q = model
+    w_size, y_size = len(w_grid), len(y_grid)
     w_indices, y_indices = jnp.arange(w_size), jnp.arange(y_size)
-    B_values = B_ez_vmap(v, params, arrays, w_indices, y_indices, w_indices)
+    B_values = B_ez(v, model, w_indices, y_indices, w_indices)
     return jnp.max(B_values, axis=(-1))
 
-T_ez_vmap = jax.jit(T_ez_vmap, static_argnums=(2,))
 
-def get_greedy_ez_vmap(v, params, sizes, arrays):
+@jax.jit
+def get_greedy_ez(v, model):
     "Computes a v-greedy policy, returned as a set of indices."
-    w_size, y_size = sizes
+    β, R, γ, δ, w_grid, y_grid, Q = model
+    w_size, y_size = len(w_grid), len(y_grid)
     w_indices, y_indices = jnp.arange(w_size), jnp.arange(y_size)
-    B_values = B_ez_vmap(v, params, arrays, 
-                      w_indices, y_indices, w_indices)
+    B_values = B_ez(v, model, w_indices, y_indices, w_indices)
     return jnp.argmax(B_values, axis=(-1))
-
-get_greedy_ez_vmap = jax.jit(get_greedy_ez_vmap, static_argnums=(2,))
 ```
 
 Here's the iteration routine.
 
 ```{code-cell} ipython3
 def value_iteration_ez_vmap(model, tol=1e-5):
-    params, sizes, arrays = model
-    w_size, y_size = sizes
+    β, R, γ, δ, w_grid, y_grid, Q = model
+    w_size, y_size = len(w_grid), len(y_grid)
     vz = jnp.zeros((w_size, y_size))
-    _T = lambda v: T_ez_vmap(v, params, sizes, arrays)
-    v_star = successive_approx_jax(_T, vz, tolerance=tol)
-    return v_star, get_greedy_ez_vmap(v_star, params, sizes, arrays)
+    v_star = successive_approx_jax(lambda v: T_ez(v, model), vz, tolerance=tol)
+    return v_star, get_greedy_ez(v_star, model)
 ```
 
 Let's see how long it takes to solve the model.
 
 ```{code-cell} ipython3
 model = create_ez_model()
-# Unpack
-params, sizes, arrays = model
-β, R, γ, δ = params
-w_size, y_size = sizes
-w_grid, y_grid, Q = arrays
+β, R, γ, δ, w_grid, y_grid, Q = model
 ```
 
 ```{code-cell} ipython3
