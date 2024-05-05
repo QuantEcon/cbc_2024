@@ -548,7 +548,7 @@ sophisticated Bellman equations.
 
 +++
 
-**Exercise**
+## Exercise
 
 In recent times, Epstein-Zin preferences have become popular for modeling applications such as business cycles, asset prices, and climate change.
 
@@ -595,11 +595,15 @@ def create_ez_model(R=1.01,                    # Gross interest rate
 ```
 
 ```{code-cell} ipython3
-for i in range(12):
-    print("Solution below.")
+# Put your code here
 ```
 
-**Solution**
+```{code-cell} ipython3
+for i in range(16):
+    print("Solution below. 🐒")
+```
+
+## Solution
 
 ```{code-cell} ipython3
 def B_ez(v, params, arrays, i, j, ip):

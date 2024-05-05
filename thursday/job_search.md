@@ -13,13 +13,19 @@ kernelspec:
 
 # Job Search
 
+----
+#### John Stachurski
+#### Prepared for the CBC Computational Workshop (2024)
+
+----
+
 Uncomment if necessary
 
 ```{code-cell} ipython3
 #!pip install quantecon
 ```
 
-In this lecture we study a basic infinite-horizon job search with Markov wage
+In this lecture we study a basic infinite-horizon job search problem with Markov wage
 draws 
 
 The exercise at the end asks you to add recursive preferences and compare
@@ -36,8 +42,6 @@ from collections import namedtuple
 
 jax.config.update("jax_enable_x64", True)
 ```
-
-
 
 ## Model
 
@@ -81,7 +85,7 @@ We solve this model using value function iteration.
 Let's set up a namedtuple to store information needed to solve the model.
 
 ```{code-cell} ipython3
-Model = namedtuple('Model', ('n', 'w_vals', 'P', 'β', 'c', 'θ'))
+Model = namedtuple('Model', ('n', 'w_vals', 'P', 'β', 'c'))
 ```
 
 The function below holds default values and populates the namedtuple.
@@ -93,13 +97,30 @@ def create_js_model(
         ν=0.2,       # wage volatility
         β=0.99,      # discount factor
         c=1.0,       # unemployment compensation
-        θ=-0.1       # risk parameter
     ):
     "Creates an instance of the job search model with Markov wages."
     mc = qe.tauchen(n, ρ, ν)
     w_vals, P = jnp.exp(mc.state_values), mc.P
     P = jnp.array(P)
-    return Model(n, w_vals, P, β, c, θ)
+    return Model(n, w_vals, P, β, c)
+```
+
+Let's test it:
+
+```{code-cell} ipython3
+model = create_js_model(β=0.98)
+```
+
+```{code-cell} ipython3
+model.c
+```
+
+```{code-cell} ipython3
+model.β
+```
+
+```{code-cell} ipython3
+model.w_vals.mean()   # mean wage offer
 ```
 
 Here's the Bellman operator.
@@ -113,12 +134,16 @@ def T(v, model):
         e(w) = w / (1-β) and (Ev)(w) = E_w[ v(W')]
 
     """
-    n, w_vals, P, β, c, θ = model
+    n, w_vals, P, β, c = model
     h = c + β * P @ v
     e = w_vals / (1 - β)
 
     return jnp.maximum(e, h)
 ```
+
+Question: Is this a pure function?
+
++++
 
 The next function computes the optimal policy under the assumption that $v$ is
                  the value function.
@@ -141,7 +166,7 @@ is higher than the value of continuing.
 @jax.jit
 def get_greedy(v, model):
     " Get a v-greedy policy."
-    n, w_vals, P, β, c, θ = model
+    n, w_vals, P, β, c = model
     e = w_vals / (1 - β)
     h = c + β * P @ v
     σ = jnp.where(e >= h, 1, 0)
@@ -169,23 +194,46 @@ def vfi(model, max_iter=10_000, tol=1e-4):
     return v_star, σ_star
 ```
 
+Question: Is this a pure function?
+
++++
+
 ## Computing the solution
 
 Let's set up and solve the model.
 
 ```{code-cell} ipython3
 model = create_js_model()
-n, w_vals, P, β, c, θ = model
+n, w_vals, P, β, c = model
 
 qe.tic()
 v_star, σ_star = vfi(model)
 vfi_time = qe.toc()
 ```
 
+Here's the optimal policy:
+
+```{code-cell} ipython3
+fig, ax = plt.subplots()
+ax.plot(σ_star)
+ax.set_xlabel("wage values")
+ax.set_ylabel("optimal choice (stop=1)")
+plt.show()
+```
+
 We compute the reservation wage as the first $w$ such that $\sigma(w)=1$.
 
 ```{code-cell} ipython3
-res_wage = w_vals[jnp.searchsorted(σ_star, 1.0)]
+stop_indices = jnp.where(σ_star == 1)
+stop_indices
+```
+
+```{code-cell} ipython3
+res_wage_index = min(stop_indices[0])
+```
+
+```{code-cell} ipython3
+res_wage = w_vals[res_wage_index]
 ```
 
 ```{code-cell} ipython3
@@ -197,7 +245,7 @@ ax.set_xlabel("$w$", fontsize=12)
 plt.show()
 ```
 
-**Exercise**
+## Exercise
 
 In the setting above, the agent is risk-neutral vis-a-vis future utility risk.
 
@@ -225,6 +273,12 @@ case.
 
 Try to interpret your result.
 
+You can start with the following code:
+
+```{code-cell} ipython3
+Model = namedtuple('Model', ('n', 'w_vals', 'P', 'β', 'c', 'θ'))
+```
+
 ```{code-cell} ipython3
 def create_risk_sensitive_js_model(
         n=500,       # wage grid size
@@ -239,8 +293,20 @@ def create_risk_sensitive_js_model(
     w_vals, P = jnp.exp(mc.state_values), mc.P
     P = jnp.array(P)
     return Model(n, w_vals, P, β, c, θ)
+```
 
+Now you need to modify `T` and `get_greedy` and then run value function iteration again.
 
+```{code-cell} ipython3
+# Put your code here
+```
+
+```{code-cell} ipython3
+for i in range(20):
+    print("Solution below!")
+```
+
+```{code-cell} ipython3
 @jax.jit
 def T_rs(v, model):
     """
@@ -297,18 +363,21 @@ v_star_rs, σ_star_rs = vfi(model_rs)
 vfi_time = qe.toc()
 ```
 
+Let's plot the results together with the original risk neutral case and see what we get.
+
 ```{code-cell} ipython3
-res_wage_rs = w_vals[jnp.searchsorted(σ_star_rs, 1.0)]
+stop_indices = jnp.where(σ_star_rs == 1)
+res_wage_index = min(stop_indices[0])
+res_wage_rs = w_vals[res_wage_index]
 ```
 
 ```{code-cell} ipython3
 
-
 fig, ax = plt.subplots()
-ax.plot(w_vals, v_star,  alpha=0.8, label="RN $v$")
-ax.plot(w_vals, v_star_rs, alpha=0.8, label="RS $v$")
-ax.vlines((res_wage,), 150, 400,  ls='--', color='darkblue', alpha=0.5, label=r"RV $\bar w$")
-ax.vlines((res_wage_rs,), 150, 400, ls='--', color='orange', alpha=0.5, label=r"RS $\bar w$")
+ax.plot(w_vals, v_star,  alpha=0.8, label="risk neutral $v$")
+ax.plot(w_vals, v_star_rs, alpha=0.8, label="risk sensitive $v$")
+ax.vlines((res_wage,), 150, 400,  ls='--', color='darkblue', alpha=0.5, label=r"risk neutral $\bar w$")
+ax.vlines((res_wage_rs,), 150, 400, ls='--', color='orange', alpha=0.5, label=r"risk sensitive $\bar w$")
 ax.legend(frameon=False, fontsize=12, loc="lower right")
 ax.set_xlabel("$w$", fontsize=12)
 plt.show()
