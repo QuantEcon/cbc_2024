@@ -55,13 +55,22 @@ def fh(x, h=0.1):
 x_grid = np.linspace(-2, 2, 200)
 fig, ax = plt.subplots()
 ax.plot(x_grid, f(x_grid), label="$f$")
-ax.plot(x_grid, f(1.0) + fh(1.0) * x_grid, label="approximation")
+ax.plot(x_grid, f(1.0) + fh(1.0) * (x_grid - 1.0), label="approximation")
 ax.legend()
 plt.show()
 ```
 
-This kind of numerical derivative is often inaccurate and unstable, particularly
-in high dimensions.
+This kind of numerical derivative is often inaccurate and unstable.
+
+One reason is that in the calculation of
+
+$$
+    \frac{f(x+h) - f(x)}{h} 
+$$
+
+we often have very small numbers in the numerator and denominator, which causes rounding errors.
+
+The situation is exponentially worse in high dimensions, working with higher order derivatives
 
 +++
 
@@ -77,9 +86,25 @@ expr.diff((x, 6))  # 6-th order derivative
 ```
 
 Symbolic calculus tries to use rules for differentiation to produce a single
-expression representing a derivative.
+closed-form expression representing a derivative.
 
-It does not aim for computational efficiency.
+This is useful at times but has disadvantages when considering high performance
+computing.
+
+One disadvantage is that it cannot differentiate through control flow, only through mathematical expressions.
+
+Also, using symbolic calculus might involve many redundant calculations.
+
+For example, consider
+
+$$
+    (f g h)'
+    = (f' g + g' f) h + (f g) h'
+$$
+
+If we evaluate at $x$, then we evalute $f(x)$ and $g(x)$ twice each.
+
+Also, computing $f'(x)$ and $f(x)$ might involve similar terms (e.g., $(\exp(2x)' = 2 \exp(2x)$) but this is not exploited in symbolic algebra.
 
 +++
 
