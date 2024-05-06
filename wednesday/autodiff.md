@@ -13,8 +13,12 @@ kernelspec:
 
 # Adventures with Autodiff
 
+------
+
 #### Prepared for the CBC Workshop May 2024
 #### John Stachurski
+
+------
 
 ```{code-cell} ipython3
 import jax
