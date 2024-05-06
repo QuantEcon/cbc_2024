@@ -36,6 +36,12 @@ In this lecture we explore how to compute lifetime utility in some of these sett
 
 Our main focus will be the Epstein-Zin setting.
 
+Uncomment if necessary:
+
+```{code-cell} ipython3
+!pip install quantecon
+```
+
 We will use the following imports.
 
 ```{code-cell} ipython3
