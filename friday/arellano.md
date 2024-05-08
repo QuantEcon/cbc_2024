@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.15.2
+    jupytext_version: 1.16.1
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -13,20 +13,22 @@ kernelspec:
 
 # Default Risk and Income Fluctuations
 
-```{include} _admonition/gpu.md
-```
+----
 
-In addition to JAX and Anaconda, this lecture will need the following libraries:
+#### John Stachurski
+#### Prepared for the CBC Computational Workshop (May 2024)
+
+Uncomment if necessary:
 
 ```{code-cell} ipython3
 :tags: [hide-output]
 
-!pip install quantecon
+#!pip install quantecon
 ```
 
 ## Overview
 
-This lecture computes versions of Arellano’s {cite}`Are08` model of sovereign default.
+This lecture studies [Arellano’s 2008 model of sovereign default](https://www.aeaweb.org/articles?id=10.1257/aer.98.3.690).
 
 The model describes interactions among default risk, output, and an
 equilibrium interest rate that includes a premium for endogenous default risk.
@@ -52,20 +54,6 @@ including
 - countercyclical trade balances
 - high volatility of consumption relative to output
 
-
-Notably, long recessions caused by bad draws in the income process increase 
-the government’s incentive to default.
-
-This can lead to
-
-- spikes in interest rates
-- temporary losses of access to international credit markets
-- large drops in output, consumption, and welfare
-- large capital outflows during recessions
-
-
-Such dynamics are consistent with experiences of many countries.
-
 Let’s start with some imports:
 
 ```{code-cell} ipython3
@@ -74,16 +62,9 @@ Let’s start with some imports:
 import matplotlib.pyplot as plt
 import quantecon as qe
 import random
-
 import jax
 import jax.numpy as jnp
 from collections import namedtuple
-```
-
-Let's check the GPU we are running
-
-```{code-cell} ipython3
-!nvidia-smi
 ```
 
 We will use 64 bit floats with JAX in order to increase the precision.
@@ -114,7 +95,7 @@ Households within the country are identical and rank stochastic consumption stre
 
 $$
  \mathbb E \sum_{t=0}^{\infty} \beta^t u(c_t)
- $$ (equation13_1)
+$$ 
 
 Here
 
@@ -125,7 +106,7 @@ Here
 Consumption sequences enjoyed by households are affected by the government’s 
 decision to borrow or lend internationally.
 
-The government is benevolent in the sense that its aim is to maximize {eq}`equation13_1`.
+The government is benevolent in the sense that its aim is to maximize household utility.
 
 The government is the only domestic actor with access to foreign credit.
 
@@ -139,18 +120,12 @@ try to smooth consumption by borrowing from (and lending to) foreign creditors.
 The only credit instrument available to the government is a one-period bond 
 traded in international credit markets.
 
-The bond market has the following features
+The bond matures in one period and is not state contingent.
 
-- The bond matures in one period and is not state contingent.
-- A purchase of a bond with face value $ B' $ is a claim to $ B' $ units of the
+A purchase of a bond with face value $ B' $ is a claim to $ B' $ units of the
   consumption good next period.
-- To purchase $ B' $  next period costs $ q B' $ now, or, what is equivalent.
-- For selling $ -B' $ units of next period goods the seller earns $ - q B' $ of 
-  today’s goods.
   - If $ B' < 0 $, then $ -q B' $ units of the good are received in the current 
     period, for a promise to repay $ -B' $ units next period.
-  - There is an equilibrium  price function $ q(B', y) $ that makes $ q $ depend 
-    on both $ B' $ and $ y $.
 
 
 Earnings on the government portfolio are distributed (or, if negative, taxed) 
@@ -161,7 +136,7 @@ national budget constraint is
 
 $$
 c = y + B - q(B', y) B'
-$$ (equation13_2)
+$$ 
 
 Here and below, a prime denotes a next period value or a claim maturing next period.
 
@@ -173,27 +148,22 @@ To rule out Ponzi schemes, we also require that $ B \geq -Z $ in every period.
 
 ### Financial Markets
 
-Foreign creditors
-
-- are risk neutral
-- know the domestic output stochastic process $ \{y_t\} $ and observe
-  $ y_t, y_{t-1}, \ldots, $ at time $ t $
-- can borrow or lend without limit in an international credit market 
+Foreign creditors are risk neutral and
+can borrow or lend without limit in an international credit market 
   at a constant international interest rate $ r $
-- receive full payment if the government chooses to pay
-- receive zero if the government defaults on its one-period debt due
+
+They receive
+
+- full payment if the government chooses to pay
+- zero if the government defaults on its one-period debt due
 
 
 When a government is expected to default next period with probability $ \delta $, the expected
-value of a promise to pay one unit of consumption next period is $ 1 - \delta $.
-
-Therefore, the discounted expected value of a promise to pay $ B $ next period is
+value of a promise to pay one unit of consumption next period is
 
 $$
 q = \frac{1 - \delta}{1 + r}
-$$ (equation13_3)
-
-Next we turn to how the government in effect chooses the default probability $ \delta $.
+$$
 
 +++
 
@@ -210,16 +180,16 @@ Defaulting means declining to repay all of its current obligations.
 
 If the government defaults in the current period, then consumption equals current output.
 
-But a sovereign default has two consequences:
+Moreover,
 
 1. Output immediately falls from $ y $ to $ h(y) $, where $ 0 \leq h(y) \leq y $.
-  - It returns to $ y $ only after the country regains access to international credit
+      - It returns to $ y $ only after the country regains access to international credit
     markets.
 1. The country loses access to foreign credit markets.
 
 +++
 
-### Reentering International Credit Market
+
 
 While in a state of default, the economy regains access to foreign credit 
 in each subsequent period with probability $ \theta $.
@@ -233,9 +203,9 @@ sequence of government default decisions and an implied flow of household consum
 
 1. Consumption and assets satisfy the national budget constraint.
 1. The government maximizes household utility taking into account
-  - the resource constraint
-  - the effect of its choices on the price of bonds
-  - consequences of defaulting now for future net output and future borrowing 
+   - the resource constraint
+   - the effect of its choices on the price of bonds
+   - consequences of defaulting now for future net output and future borrowing 
     and lending opportunities
 1. The interest rate on the government’s debt includes a risk-premium sufficient to make foreign
   creditors expect on average to earn the constant risk-free international interest rate.
