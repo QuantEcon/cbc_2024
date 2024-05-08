@@ -30,6 +30,45 @@ cover the foundations of Python programming and Python scientific libraries, as
 well as showing how they can be used in economic applications for rapid
 development and high performance computing.  
 
+## Topics
+
+### Monday: Overview and Python intro
+
+* An overview of modern scientific computing
+* AI and its impact on economic modeling
+* Quick introduction to Python
+
+### Tuesday: Scientific Python
+
+* Linear regression with Python
+* Accelerating Python using Numba and Fortran
+* Inventory dynamics
+* Gini coefficients and Lorenz curves
+* Wealth dynamics (simple model)
+* Markov chains
+
+### Wednesday: JAX, GPUs and Autodiff
+
+* Introduction to JAX and GPU computing
+* Automatic differentiation
+* Autodiff application: Epstein-Zin preferences
+* Wealth dynamics revisited
+* Inventory dynamics revisited
+* Job search
+
+### Thursday: Dynamic programming with JAX
+
+* Dynamic programming: theory and algorithms
+* Optimal savings problems (JAX)
+* Endogenous grid method (JAX)
+
+### Friday: Equilibrium models with JAX
+
+* Aiyagari model
+* Arellano sovereign default model
+* Bianchi overborrowing model
+* Hopenhayn industry model
+
 
 ## Dates
 
