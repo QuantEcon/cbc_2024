@@ -18,11 +18,11 @@ kernelspec:
 #### John Stachurski
 #### Prepared for the CBC Computational Workshop (May 2024)
 
+----
+
 Uncomment if necessary:
 
 ```{code-cell} ipython3
-:tags: [hide-output]
-
 #!pip install quantecon
 ```
 
@@ -57,8 +57,6 @@ including
 Let’s start with some imports:
 
 ```{code-cell} ipython3
-:tags: [hide-output]
-
 import matplotlib.pyplot as plt
 import quantecon as qe
 import random
@@ -189,8 +187,6 @@ Moreover,
 
 +++
 
-
-
 While in a state of default, the economy regains access to foreign credit 
 in each subsequent period with probability $ \theta $.
 
@@ -269,14 +265,13 @@ and hence given $ B' $ the probability of default next period is
 
 $$
 \delta(B', y) := \int \mathbb 1\{v_c(B', y') < v_d(y') \} p(y, y') dy'
-$$ (equation13_4)
+$$ 
 
-Given zero profits for foreign creditors in equilibrium, we can combine 
-{eq}`equation13_3` and {eq}`equation13_4` to pin down the bond price function:
+Given zero profits for foreign creditors in equilibrium,  the bond price function is
 
 $$
 q(B', y) = \frac{1 - \delta(B', y)}{1 + r}
-$$ (equation13_5)
+$$
 
 +++
 
@@ -294,10 +289,9 @@ An *equilibrium* is
 
 such that
 
-- The three Bellman equations for $ (v_c(B, y), v_d(y), v(B,y)) $ are satisfied
-- Given the price function $ q(B',y) $, the default decision rule and the asset 
-  accumulation decision rule attain the optimal value function  $ v(B,y) $, and
-- The price function $ q(B',y) $ satisfies equation {eq}`equation13_5`
+1. The three Bellman equations for $ (v_c(B, y), v_d(y), v(B,y)) $ are satisfied
+1. Given the price function $ q(B',y) $, the default decision rule and the asset 
+  accumulation decision rule attain the optimal value function  $ v(B,y) $
 
 +++
 
@@ -308,34 +302,28 @@ Let’s now compute an equilibrium of Arellano’s model.
 The equilibrium objects are the value function $ v(B, y) $, the associated
 default decision rule, and the pricing function $ q(B', y) $.
 
-We’ll use our code to replicate Arellano’s results.
 
-After that we’ll perform some additional simulations.
 
 We use a slightly modified version of the algorithm recommended by Arellano.
 
-- The appendix to {cite}`Are08` recommends value function iteration until
-  convergence, updating the price, and then repeating.
+- Arellano recommends value function iteration until convergence, updating the price, and then repeating.
 - Instead, we update the bond price at every value function iteration step.
 
-
-The second approach is faster and the two different procedures deliver very similar results.
+The second approach is faster and the two different procedures deliver similar results.
 
 Here is a more detailed description of our algorithm:
 
 1. Guess a pair of non-default and default value functions $ v_c $ and $ v_d $.
 1. Using these functions, calculate the value function $ v $, the corresponding default probabilities and the price function $ q $.
 1. At each pair $ (B, y) $,
-  1. update the value of defaulting $ v_d(y) $.
-  1. update the value of remaining $ v_c(B, y) $.
+    1. update the value of defaulting $ v_d(y) $.
+    1. update the value of remaining $ v_c(B, y) $.
 1. Check for convergence. If converged, stop – if not, go to step 2.
 
 
 We use simple discretization on a grid of asset holdings and income levels.
 
 The output process is discretized using a [quadrature method due to Tauchen](https://github.com/QuantEcon/QuantEcon.py/blob/master/quantecon/markov/approximation.py).
-
-As we have in other places, we accelerate our code using Numba.
 
 We define a namedtuple to store parameters, grids and transition
 probabilities.
@@ -348,8 +336,6 @@ ArellanoEconomy = namedtuple('ArellanoEconomy',
     'ρ',      # Persistence in the income process
     'η',      # Standard deviation of the income process
     'θ',      # Prob of re-entering financial markets
-    'B_size', # Grid size for bonds
-    'y_size', # Grid size for income
     'P',      # Markov matrix governing the income process
     'B_grid', # Bond unit grid
     'y_grid', # State values of the income process 
@@ -357,7 +343,8 @@ ArellanoEconomy = namedtuple('ArellanoEconomy',
 ```
 
 ```{code-cell} ipython3
-def create_arellano(B_size=251,       # Grid size for bonds
+def create_arellano_model(
+    B_size=251,         # Grid size for bonds
     B_min=-0.45,        # Smallest B value
     B_max=0.45,         # Largest B value
     y_size=51,          # Grid size for income
@@ -372,25 +359,17 @@ def create_arellano(B_size=251,       # Grid size for bonds
     # Set up grids
     B_grid = jnp.linspace(B_min, B_max, B_size)
     mc = qe.markov.tauchen(y_size, ρ, η)
-    y_grid, P = jnp.exp(mc.state_values), mc.P
-
-    # Put grids on the device
-    P = jax.device_put(P)
-
+    y_grid, P = jnp.exp(mc.state_values), jnp.array(mc.P)
     # Output received while in default, with same shape as y_grid
     def_y = jnp.minimum(def_y_param * jnp.mean(y_grid), y_grid)
     
-    return ArellanoEconomy(β=β, γ=γ, r=r, ρ=ρ, η=η, θ=θ, B_size=B_size, 
-                            y_size=y_size, P=P, 
-                            B_grid=B_grid, y_grid=y_grid, 
-                            def_y=def_y)
+    return ArellanoEconomy(β=β, γ=γ, r=r, ρ=ρ, η=η, θ=θ, 
+                           P=P, B_grid=B_grid, y_grid=y_grid, def_y=def_y)
 ```
 
 Here is the utility function.
 
 ```{code-cell} ipython3
-:hide-output: false
-
 @jax.jit
 def u(c, γ):
     return c**(1-γ)/(1-γ)
@@ -400,9 +379,8 @@ Here is a function to compute the bond price at each state, given $ v_c $ and
 $ v_d $.
 
 ```{code-cell} ipython3
-:hide-output: false
-
-def compute_q(v_c, v_d, params, sizes, arrays):
+@jax.jit
+def compute_q(v_c, v_d, model):
     """
     Compute the bond price function q(B, y) at each (B, y) pair.  The first
     step is to calculate the default probabilities
@@ -412,9 +390,8 @@ def compute_q(v_c, v_d, params, sizes, arrays):
     """
 
     # Unpack
-    β, γ, r, ρ, η, θ = params
-    B_size, y_size = sizes
-    P, B_grid, y_grid, def_y = arrays
+    β, γ, r, ρ, η, θ, P, B_grid, y_grid, def_y = model
+    B_size, y_size = len(B_grid), len(y_grid)
 
     # Set up arrays with indices [i_B, i_y, i_yp]
     v_d = jnp.reshape(v_d, (1, 1, y_size))
@@ -432,18 +409,15 @@ def compute_q(v_c, v_d, params, sizes, arrays):
 Next we introduce Bellman operators that updated $ v_d $ and $ v_c $.
 
 ```{code-cell} ipython3
-:hide-output: false
-
-def T_d(v_c, v_d, params, sizes, arrays):
+@jax.jit
+def T_d(v_c, v_d, model):
     """
     The RHS of the Bellman equation when income is at index y_idx and
     the country has chosen to default.  Returns an update of v_d.
     """
     # Unpack
-    β, γ, r, ρ, η, θ = params
-    B_size, y_size = sizes
-    P, B_grid, y_grid, def_y = arrays
-
+    β, γ, r, ρ, η, θ, P, B_grid, y_grid, def_y = model
+    B_size, y_size = len(B_grid), len(y_grid)
 
     B0_idx = jnp.searchsorted(B_grid, 1e-10)  # Index at which B is near zero
 
@@ -457,9 +431,8 @@ def T_d(v_c, v_d, params, sizes, arrays):
 ```
 
 ```{code-cell} ipython3
-:hide-output: false
-
-def bellman(v_c, v_d, q, params, sizes, arrays):
+@jax.jit
+def bellman(v_c, v_d, q, model):
     """
     The RHS of the Bellman equation when the country is not in a
     defaulted state on their debt.  That is,
@@ -470,9 +443,8 @@ def bellman(v_c, v_d, q, params, sizes, arrays):
     If consumption is not positive then returns -np.inf
     """
     # Unpack
-    β, γ, r, ρ, η, θ = params
-    B_size, y_size = sizes
-    P, B_grid, y_grid, def_y = arrays
+    β, γ, r, ρ, η, θ, P, B_grid, y_grid, def_y = model
+    B_size, y_size = len(B_grid), len(y_grid)
 
     # Set up c[i_B, i_y, i_Bp]
     y_idx = jnp.reshape(jnp.arange(y_size), (1, y_size, 1))
@@ -494,38 +466,27 @@ def bellman(v_c, v_d, q, params, sizes, arrays):
 ```
 
 ```{code-cell} ipython3
-def T_c(v_c, v_d, q, params, sizes, arrays):
-    vals = bellman(v_c, v_d, q, params, sizes, arrays)
+@jax.jit
+def T_c(v_c, v_d, q, model):
+    vals = bellman(v_c, v_d, q, model)
     return jnp.max(vals, axis=2)
 ```
 
 ```{code-cell} ipython3
-def get_greedy(v_c, v_d, q, params, sizes, arrays):
-    vals = bellman(v_c, v_d, q, params, sizes, arrays)
+@jax.jit
+def get_greedy(v_c, v_d, q, model):
+    vals = bellman(v_c, v_d, q, model)
     return jnp.argmax(vals, axis=2)
-```
-
-Let's make JIT-compiled versions of these functions, with the sizes of the 
-arrays declared as static (compile-time constants) in order to help the compiler.
-
-```{code-cell} ipython3
-compute_q = jax.jit(compute_q, static_argnums=(3,))
-T_d = jax.jit(T_d, static_argnums=(3,))
-bellman = jax.jit(bellman, static_argnums=(4,))
-T_c = jax.jit(T_c, static_argnums=(4,))
-get_greedy = jax.jit(get_greedy, static_argnums=(4,))
 ```
 
 Here is a function that calls these operators in the right sequence.
 
 ```{code-cell} ipython3
-:hide-output: false
+def update_values_and_prices(v_c, v_d, model):
 
-def update_values_and_prices(v_c, v_d, params, sizes, arrays):
-
-    q = compute_q(v_c, v_d, params, sizes, arrays)
-    new_v_d = T_d(v_c, v_d, params, sizes, arrays)
-    new_v_c = T_c(v_c, v_d, q, params, sizes, arrays)
+    q = compute_q(v_c, v_d, model)
+    new_v_d = T_d(v_c, v_d, model)
+    new_v_c = T_c(v_c, v_d, q, model)
 
     return new_v_c, new_v_d
 ```
@@ -538,26 +499,14 @@ One of the jobs of this function is to take an instance of
 down to more basic objects, which are then passed out to jitted functions.
 
 ```{code-cell} ipython3
-:hide-output: false
-
 def solve(model, tol=1e-8, max_iter=10_000):
     """
     Given an instance of `ArellanoEconomy`, this function computes the optimal
     policy and value functions.
     """
     # Unpack
-    
-    β, γ, r, ρ, η, θ, B_size, y_size, P, B_grid, y_grid, def_y = model
-    
-    params = β, γ, r, ρ, η, θ
-    sizes = B_size, y_size
-    arrays = P, B_grid, y_grid, def_y
-    
-    β, γ, r, ρ, η, θ, B_size, y_size, P, B_grid, y_grid, def_y = model
-    
-    params = β, γ, r, ρ, η, θ
-    sizes = B_size, y_size
-    arrays = P, B_grid, y_grid, def_y
+    β, γ, r, ρ, η, θ, P, B_grid, y_grid, def_y = model
+    B_size, y_size = len(B_grid), len(y_grid)
 
     # Initial conditions for v_c and v_d
     v_c = jnp.zeros((B_size, y_size))
@@ -568,46 +517,37 @@ def solve(model, tol=1e-8, max_iter=10_000):
     while (current_iter < max_iter) and (error > tol):
         if current_iter % 100 == 0:
             print(f"Entering iteration {current_iter} with error {error}.")
-        new_v_c, new_v_d = update_values_and_prices(v_c, v_d, params, 
-                                                    sizes, arrays)
+        new_v_c, new_v_d = update_values_and_prices(v_c, v_d, model)
         error = jnp.max(jnp.abs(new_v_c - v_c)) + jnp.max(jnp.abs(new_v_d - v_d))
         v_c, v_d = new_v_c, new_v_d
         current_iter += 1
 
     print(f"Terminating at iteration {current_iter}.")
 
-    q = compute_q(v_c, v_d, params, sizes, arrays)
-    B_star = get_greedy(v_c, v_d, q, params, sizes, arrays)
+    q = compute_q(v_c, v_d, model)
+    B_star = get_greedy(v_c, v_d, q, model)
     return v_c, v_d, q, B_star
 ```
 
 Let's try solving the model.
 
 ```{code-cell} ipython3
-:hide-output: false
-
-ae = create_arellano()
+model = create_arellano_model()
 ```
 
 ```{code-cell} ipython3
-:hide-output: false
-
-v_c, v_d, q, B_star = solve(ae)
+v_c, v_d, q, B_star = solve(model)
 ```
 
 ```{code-cell} ipython3
-:hide-output: false
-
 %%time
-v_c, v_d, q, B_star = solve(ae)
+v_c, v_d, q, B_star = solve(model)
 ```
 
 Finally, we write a function that will allow us to simulate the economy once
 we have the policy functions
 
 ```{code-cell} ipython3
-:hide-output: false
-
 def simulate(model, T, v_c, v_d, q, B_star, key):
     """
     Simulates the Arellano 2008 model of sovereign debt
@@ -617,9 +557,9 @@ def simulate(model, T, v_c, v_d, q, B_star, key):
     assumed to come from a solution to `model`.
 
     """
-    # Unpack elements of the model
-    B_size, y_size = model.B_size, model.y_size
-    B_grid, y_grid, P = model.B_grid, model.y_grid, model.P
+    # Unpack
+    β, γ, r, ρ, η, θ, P, B_grid, y_grid, def_y = model
+    B_size, y_size = len(B_grid), len(y_grid)
 
     B0_idx = jnp.searchsorted(B_grid, 1e-10)  # Index at which B is near zero
 
@@ -675,109 +615,39 @@ def simulate(model, T, v_c, v_d, q, B_star, key):
 
 ## Results
 
-Let’s start by trying to replicate the results obtained in {cite}`Are08`.
+Let’s try to replicate the results obtained in Arellano (2008).
 
-In what follows, all results are computed using parameter values of `ArellanoEconomy` created by `create_arellano`.
+In what follows, all results are computed using parameter values of `ArellanoEconomy` created by `create_arellano_model`.
 
 For example, `r=0.017` matches the average quarterly rate on a 5 year US treasury over the period 1983–2001.
 
-Details on how to compute the figures are reported as solutions to the
-exercises.
+We compute the value function, policy and equilibrium prices:
 
-The first figure shows the bond price schedule and replicates Figure 3 of
-{cite}`Are08`, where $ y_L $ and $ Y_H $ are particular below average and above average
-values of output $ y $.
+```{code-cell} ipython3
+model = create_arellano_model()
 
-```{figure} _static/lecture_specific/arellano/arellano_bond_prices.png
+β, γ, r, ρ, η, θ, P, B_grid, y_grid, def_y = model
+B_size, y_size = len(B_grid), len(y_grid)
 ```
+
+```{code-cell} ipython3
+v_c, v_d, q, B_star = solve(model)
+```
+
+The following bond price schedule replicates Figure 3 of
+Arellano (2008), where $ y_L $ and $ Y_H $ are particular below average and above average
+values of output $ y $.
 
 - $ y_L $ is 5% below the mean of the $ y $ grid values
 - $ y_H $ is 5% above  the mean of the $ y $ grid values
 
-
-The grid used to compute this figure was relatively fine (`y_size, B_size = 51, 251`), 
-which explains the minor differences between this and Arrelano’s figure.
-
-The figure shows that
-
-- Higher levels of debt (larger $ -B' $) induce larger discounts on the face value, which
-  correspond to higher interest rates.
-- Lower income also causes more discounting, as foreign creditors anticipate greater likelihood
-  of default.
-
-
-The next figure plots value functions and replicates the right hand panel of Figure 4 of {cite}`Are08`.
-
-```{figure} _static/lecture_specific/arellano/arellano_value_funcs.png
-```
-
-
-We can use the results of the computation to study the default probability $ \delta(B', y) $
-defined in {eq}`equation13_4`.
-
-The next plot shows these default probabilities over $ (B', y) $ as a heat map.
-
-```{figure} _static/lecture_specific/arellano/arellano_default_probs.png
-```
-
-As anticipated, the probability that the government chooses to default in the following period
-increases with indebtedness and falls with income.
-
-Next let’s run a time series simulation of $ \{y_t\} $, $ \{B_t\} $ and $ q(B_{t+1}, y_t) $.
-
-The grey vertical bars correspond to periods when the economy is excluded from financial markets because of a past default.
-
-```{figure} _static/lecture_specific/arellano/arellano_time_series.png
-```
-
-One notable feature of the simulated data is the nonlinear response of interest rates.
-
-Periods of relative stability are followed by sharp spikes in the discount rate on government debt.
-
-## Exercises
-
-```{exercise-start}
-:label: arellano_ex1
-```
-
-To the extent that you can, replicate the figures shown above
-
-- Use the parameter values listed as defaults in `ArellanoEconomy` created by `create_arellano`.
-- The time series will of course vary depending on the shock draws.
-
-```{exercise-end}
-```
-
-```{solution-start} arellano_ex1
-:class: dropdown
-```
-
-Compute the value function, policy and equilibrium prices
-
 ```{code-cell} ipython3
-:hide-output: false
 
-ae = create_arellano()
-v_c, v_d, q, B_star = solve(ae)
-```
-
-Compute the bond price schedule as seen in figure 3 of {cite}`Are08`
-
-```{code-cell} ipython3
-:hide-output: false
-
-# Unpack some useful names
-B_grid, y_grid, P = ae.B_grid, ae.y_grid, ae.P
-B_size, y_size = ae.B_size, ae.y_size
-r = ae.r
-
-# Create "Y High" and "Y Low" values as 5% devs from mean
 high, low = jnp.mean(y_grid) * 1.05, jnp.mean(y_grid) * .95
 iy_high, iy_low = (jnp.searchsorted(y_grid, x) for x in (high, low))
 
 fig, ax = plt.subplots(figsize=(10, 6.5))
 ax.set_title("Bond price schedule $q(y, B')$")
-
 # Extract a suitable plot grid
 x = []
 q_low = []
@@ -792,15 +662,27 @@ ax.plot(x, q_low, label="$y_L$", lw=2, alpha=0.7)
 ax.set_xlabel("$B'$")
 ax.legend(loc='upper left', frameon=False)
 plt.show()
+# -
 ```
 
-Draw a plot of the value functions
+The grid used to compute this figure was relatively fine (`y_size, B_size = 51, 251`), 
+which explains the minor differences between this and Arellano’s figure.
+
+The figure shows that
+
+- Higher levels of debt (larger $ -B' $) induce larger discounts on the face value, which
+  correspond to higher interest rates.
+- Lower income also causes more discounting, as foreign creditors anticipate greater likelihood
+  of default.
+
+
+The next figure plots value functions and replicates the right hand panel of Figure 4 of {cite}`Are08`.
 
 ```{code-cell} ipython3
-:hide-output: false
-
 v = jnp.maximum(v_c, jnp.reshape(v_d, (1, y_size)))
+```
 
+```{code-cell} ipython3
 fig, ax = plt.subplots(figsize=(10, 6.5))
 ax.set_title("Value Functions")
 ax.plot(B_grid, v[:, iy_high], label="$y_H$", lw=2, alpha=0.7)
@@ -809,13 +691,15 @@ ax.legend(loc='upper left')
 ax.set(xlabel="$B$", ylabel="$v(y, B)$")
 ax.set_xlim(min(B_grid), max(B_grid))
 plt.show()
+# -
 ```
 
-Draw a heat map for default probability
+We can use the results of the computation to study the default probability $ \delta(B', y) $
+defined in {eq}`equation13_4`.
+
+The next plot shows these default probabilities over $ (B', y) $ as a heat map.
 
 ```{code-cell} ipython3
-:hide-output: false
-
 # Set up arrays with indices [i_B, i_y, i_yp]
 shaped_v_d = jnp.reshape(v_d, (1, 1, y_size))
 shaped_v_c = jnp.reshape(v_c, (B_size, 1, y_size))
@@ -833,26 +717,28 @@ fig.colorbar(hm, cax=cax)
 ax.axis([B_grid.min(), 0.05, y_grid.min(), y_grid.max()])
 ax.set(xlabel="$B'$", ylabel="$y$", title="Probability of Default")
 plt.show()
+# -
 ```
 
-Plot a time series of major variables simulated from the model
+As anticipated, the probability that the government chooses to default in the following period
+increases with indebtedness and falls with income.
+
+Next let’s run a time series simulation of $ \{y_t\} $, $ \{B_t\} $ and $ q(B_{t+1}, y_t) $.
+
+The grey vertical bars correspond to periods when the economy is excluded from financial markets because of a past default.
 
 ```{code-cell} ipython3
-:hide-output: false
-
 import jax.random as random
 T = 250
 key = random.PRNGKey(42)
-y_sim, y_a_sim, B_sim, q_sim, d_sim = simulate(ae, T, v_c, v_d, q, B_star, key)
-
-# T = 250
-# jnp.random.seed(42)
-# y_sim, y_a_sim, B_sim, q_sim, d_sim = simulate(ae, T, v_c, v_d, q, B_star)
+y_sim, y_a_sim, B_sim, q_sim, d_sim = simulate(model, T, v_c, v_d, q, B_star, key)
 ```
 
-```{code-cell} ipython3
-:hide-output: false
+T = 250
+jnp.random.seed(42)
+y_sim, y_a_sim, B_sim, q_sim, d_sim = simulate(model, T, v_c, v_d, q, B_star)
 
+```{code-cell} ipython3
 # Pick up default start and end dates
 start_end_pairs = []
 i = 0
@@ -888,7 +774,13 @@ for ax, series, title in zip(axes, plot_series, titles):
     ax.set(title=title, xlabel="time")
 
 plt.show()
+# -
 ```
 
-```{solution-end}
+One notable feature of the simulated data is the nonlinear response of interest rates.
+
+Periods of relative stability are followed by sharp spikes in the discount rate on government debt.
+
+```{code-cell} ipython3
+
 ```

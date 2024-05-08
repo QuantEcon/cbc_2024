@@ -19,6 +19,8 @@ kernelspec:
 
 #### Prepared for the CBC Computational Workshop (May 2024)
 
+----
+
 This notebook provides a Python/JAX implementation of "Overborrowing and Systemic Externalities" (AER 2011) by [Javier Bianchi](http://www.javierbianchi.com/).
 
 We use the following imports.
@@ -33,7 +35,7 @@ import numpy as np
 import quantecon as qe
 import scipy as sp
 import matplotlib.pyplot as plt
-import seaborn
+from collections import namedtuple
 ```
 
 ## Description of the model
@@ -259,7 +261,7 @@ def discretize_income_var(A=A, C=C, grid_size=4, seed=1234):
         (y_t_nodes[i], y_n_nodes[j]) to (y_t_nodes[i'], y_n_nodes[j'])
 
     """
-    
+ 
     n = grid_size
     rng = np.random.default_rng(seed)
     mc = qe.markov.discrete_var(A, C, (n, n),
@@ -375,6 +377,11 @@ Aggregate quantities and prices are
 Here's code to create three tuples that store model data relevant for computation.
 
 ```{code-cell} ipython3
+Model = namedtuple('Model',
+    ('σ', 'η', 'β', 'ω', 'κ', 'r', 'b_grid', 'y_t_nodes', 'y_n_nodes', 'Q'))
+```
+
+```{code-cell} ipython3
 def create_overborrowing_model(
         σ=2,                 # CRRA utility parameter
         η=(1/0.83)-1,        # Elasticity = 0.83, η = 0.2048
@@ -405,17 +412,14 @@ def create_overborrowing_model(
     # Set up grid for bond holdings
     b_grid = jnp.linspace(b_grid_min, b_grid_max, b_size)
     # Pack and return
-    parameters = σ, η, β, ω, κ, r
-    sizes = b_size, len(y_t_nodes)
-    arrays = b_grid, y_t_nodes, y_n_nodes, Q
-    return parameters, sizes, arrays
+    return Model(σ, η, β, ω, κ, r, b_grid, y_t_nodes, y_n_nodes, Q)
 ```
 
 Here's flow utility.
 
 ```{code-cell} ipython3
 @jax.jit
-def w(parameters, c, y_n):
+def w(model, c, y_n):
     """ 
     Current utility when c_t = c and c_n = y_n.
 
@@ -424,7 +428,7 @@ def w(parameters, c, y_n):
         w(c, y_n) := a^(1 - σ) / (1 - σ)
 
     """
-    σ, η, β, ω, κ, r = parameters
+    σ, η, β, ω, κ, r, b_grid, y_t_nodes, y_n_nodes, Q = model
     a = (ω * c**(-η) + (1 - ω) * y_n**(-η))**(-1/η)
     return a**(1 - σ) / (1 - σ)
 ```
@@ -432,20 +436,18 @@ def w(parameters, c, y_n):
 We need code to generate an initial guess of $H$.
 
 ```{code-cell} ipython3
-def generate_initial_H(parameters, sizes, arrays, at_constraint=False):
+@jax.jit
+def generate_initial_H(model, at_constraint=False):
     """
     Compute an initial guess for H. Repeat the indices for b_grid over y_t and
     y_n axes.
 
     """
-    b_size, y_size = sizes
+    σ, η, β, ω, κ, r, b_grid, y_t_nodes, y_n_nodes, Q = model
+    b_size, y_size = len(b_grid), len(y_t_nodes)
     b_indices = jnp.arange(b_size)
     O = jnp.ones((b_size, y_size, y_size), dtype=int)
     return  O * jnp.reshape(b_indices, (b_size, 1, 1)) 
-```
-
-```{code-cell} ipython3
-generate_initial_H = jax.jit(generate_initial_H, static_argnums=(1,))
 ```
 
 We need to construct the Bellman operator for the household.
@@ -454,15 +456,14 @@ Our first function returns the (unmaximized) RHS of the Bellman equation.
 
 ```{code-cell} ipython3
 @jax.jit
-def T_generator(v, H, parameters, arrays, i_b, i_B, i_y_t, i_y_n, i_bp):
+def T_generator(v, H, model, i_b, i_B, i_y_t, i_y_n, i_bp):
     """
     Given current state (b, B, y_t, y_n) with indices (i_b, i_B, i_y_t, i_y_n),
     compute the unmaximized right hand side (RHS) of the Bellman equation as a
     function of the next period choice bp = b', with index i_bp.  
     """
     # Unpack
-    σ, η, β, ω, κ, r = parameters
-    b_grid, y_t_nodes, y_n_nodes, Q = arrays
+    σ, η, β, ω, κ, r, b_grid, y_t_nodes, y_n_nodes, Q = model
     # Compute next period aggregate bonds given H
     i_Bp = H[i_B, i_y_t, i_y_n]
     # Evaluate states and actions at indices
@@ -474,7 +475,7 @@ def T_generator(v, H, parameters, arrays, i_b, i_B, i_y_t, i_y_n, i_bp):
     p = ((1 - ω) / ω) * (C / y_n)**(η + 1)
     # Compute household flow utility
     c = (1 + r) * b + y_t - bp
-    utility = w(parameters, c, y_n)
+    utility = w(model, c, y_n)
     # Compute expected value Σ_{y'} v(b', B', y') Q(y, y')
     EV = jnp.sum(v[i_bp, i_Bp, :, :] * Q[i_y_t, i_y_n, :, :])
     # Set up constraints 
@@ -490,23 +491,24 @@ Let's now vectorize and jit-compile this map.
 
 ```{code-cell} ipython3
 # Vectorize over the control bp and all the current states
-T_vec_1 = jax.vmap(T_generator,
-    in_axes=(None, None, None, None, None, None, None, None, 0))
-T_vec_2 = jax.vmap(T_vec_1, 
-    in_axes=(None, None, None, None, None, None, None, 0, None))
-T_vec_3 = jax.vmap(T_vec_2, 
-    in_axes=(None, None, None, None, None, None, 0, None, None))
-T_vec_4 = jax.vmap(T_vec_3, 
-    in_axes=(None, None, None, None, None, 0, None, None, None))
-T_vectorized = jax.vmap(T_vec_4, 
-    in_axes=(None, None, None, None, 0, None, None, None, None))
+T_generator = jax.vmap(T_generator,
+    in_axes=(None, None, None, None, None, None, None, 0))
+T_generator = jax.vmap(T_generator, 
+    in_axes=(None, None, None, None, None, None, 0, None))
+T_generator = jax.vmap(T_generator, 
+    in_axes=(None, None, None, None, None, 0, None, None))
+T_generator = jax.vmap(T_generator, 
+    in_axes=(None, None, None, None, 0, None, None, None))
+T_generator = jax.vmap(T_generator, 
+    in_axes=(None, None, None, 0, None, None, None, None))
 ```
 
 Now we can set up the Bellman operator by maximizing over the choice variable
 $b'$.
 
 ```{code-cell} ipython3
-def T(parameters, sizes, arrays, v, H):
+@jax.jit
+def T(model, v, H):
     """
     Evaluate the RHS of the Bellman equation at all states and actions and then
     maximize with respect to actions.
@@ -516,23 +518,24 @@ def T(parameters, sizes, arrays, v, H):
         * Tv as an array of shape (b_size, b_size, y_size, y_size).
 
     """
-    b_size, y_size = sizes
-    b_grid, y_t_nodes, y_n_nodes, Q = arrays
+    σ, η, β, ω, κ, r, b_grid, y_t_nodes, y_n_nodes, Q = model
+    b_size, y_size = len(b_grid), len(y_t_nodes)
     b_indices, y_indices = jnp.arange(b_size), jnp.arange(y_size)
-    val = T_vectorized(v, H, parameters, arrays,
+    val = T_generator(v, H, model,
                      b_indices, b_indices, y_indices, y_indices, b_indices)
     # Maximize over bp
     return jnp.max(val, axis=-1)
 ```
 
 ```{code-cell} ipython3
-T = jax.jit(T, static_argnums=(1,))
+
 ```
 
 Here's a function that computes a greedy policy (best response to $v$).
 
 ```{code-cell} ipython3
-def get_greedy(parameters, sizes, arrays, v, H):
+@jax.jit
+def get_greedy(model, v, H):
     """
     Compute the greedy policy for the household, which maximizes the right hand
     side of the Bellman equation given v and H.  The greedy policy is recorded
@@ -544,16 +547,12 @@ def get_greedy(parameters, sizes, arrays, v, H):
         * bp_policy as an array of shape (b_size, b_size, y_size, y_size).
 
     """
-    b_size, y_size = sizes
-    b_grid, y_t_nodes, y_n_nodes, Q = arrays
+    σ, η, β, ω, κ, r, b_grid, y_t_nodes, y_n_nodes, Q = model
+    b_size, y_size = len(b_grid), len(y_t_nodes)
     b_indices, y_indices = jnp.arange(b_size), jnp.arange(y_size)
-    val = T_vectorized(v, H, parameters, arrays,
+    val = T_generator(v, H, model,
                      b_indices, b_indices, y_indices, y_indices, b_indices)
     return jnp.argmax(val, axis=-1)
-```
-
-```{code-cell} ipython3
-get_greedy = jax.jit(get_greedy, static_argnums=(1,))
 ```
 
 Here's some code for value function iteration (VFI).
@@ -588,20 +587,21 @@ This is how we update our guess of $H$, using the current policy $b'$
 and a damped fixed point iteration scheme.
 
 ```{code-cell} ipython3
-def update_H(parameters, sizes, arrays, H, α):
+@jax.jit
+def update_H(model, H, α):
     """
     Update guess of the aggregate update rule.
 
     """
     # Set up
-    b_size, y_size = sizes
-    b_grid, y_t_nodes, y_n_nodes, Q = arrays
+    σ, η, β, ω, κ, r, b_grid, y_t_nodes, y_n_nodes, Q = model
+    b_size, y_size = len(b_grid), len(y_t_nodes)
     b_indices = jnp.arange(b_size)
     # Compute household response to current guess H
     v_init = jnp.ones((b_size, b_size, y_size, y_size))
-    _T = lambda v: T(parameters, sizes, arrays, v, H)
+    _T = lambda v: T(model, v, H)
     v, vfi_num_iter = vfi(_T, v_init)
-    bp_policy = get_greedy(parameters, sizes, arrays, v, H)
+    bp_policy = get_greedy(model, v, H)
     # Switch policy arrays to values rather than indices
     H_vals = b_grid[H]
     bp_vals = b_grid[bp_policy]
@@ -613,23 +613,23 @@ def update_H(parameters, sizes, arrays, H, α):
 ```
 
 ```{code-cell} ipython3
-update_H = jax.jit(update_H, static_argnums=(1,))
+
 ```
 
 Now we can write code to compute an equilibrium law of motion $H$.
 
 ```{code-cell} ipython3
-def compute_equilibrium(parameters, sizes, arrays,
+def compute_equilibrium(model,
                           α=0.5, tol=0.005, max_iter=500):
     """
     Compute the equilibrium law of motion.
 
     """
-    H = generate_initial_H(parameters, sizes, arrays)
+    H = generate_initial_H(model)
     error = tol + 1
     i = 0
     while error > tol and i < max_iter:
-        H_new, vfi_num_iter = update_H(parameters, sizes, arrays, H, α)
+        H_new, vfi_num_iter = update_H(model, H, α)
         print(f"VFI terminated after {vfi_num_iter} iterations.")
         error = jnp.max(jnp.abs(b_grid[H] - b_grid[H_new]))
         print(f"Updated H at iteration {i} with error {error}.")
@@ -648,14 +648,13 @@ Our first function returns the (unmaximized) RHS of the Bellman equation.
 
 ```{code-cell} ipython3
 @jax.jit
-def planner_T_generator(v, parameters, arrays, i_b, i_y_t, i_y_n, i_bp):
+def planner_T_generator(v, model, i_b, i_y_t, i_y_n, i_bp):
     """
     Given current state (b, y_t, y_n) with indices (i_b, i_y_t, i_y_n),
     compute the unmaximized right hand side (RHS) of the Bellman equation as a
     function of the next period choice bp = b'.  
     """
-    σ, η, β, ω, κ, r = parameters
-    b_grid, y_t_nodes, y_n_nodes, Q = arrays
+    σ, η, β, ω, κ, r, b_grid, y_t_nodes, y_n_nodes, Q = model
     y_t = y_t_nodes[i_y_t]
     y_n = y_n_nodes[i_y_n]
     b, bp = b_grid[i_b], b_grid[i_bp]
@@ -663,7 +662,7 @@ def planner_T_generator(v, parameters, arrays, i_b, i_y_t, i_y_n, i_bp):
     c = (1 + r) * b + y_t - bp
     p = ((1 - ω) / ω) * (c / y_n)**(η + 1)
     # Compute household flow utility
-    utility = w(parameters, c, y_n)
+    utility = w(model, c, y_n)
     # Compute expected value (continuation)
     EV = jnp.sum(v[i_bp, :, :] * Q[i_y_t, i_y_n, :, :])
     # Set up constraints and evaluate 
@@ -677,50 +676,44 @@ def planner_T_generator(v, parameters, arrays, i_b, i_y_t, i_y_n, i_bp):
 
 ```{code-cell} ipython3
 # Vectorize over the control bp and all the current states
-planner_T_vec_1 = jax.vmap(planner_T_generator,
-    in_axes=(None, None, None, None, None, None, 0))
-planner_T_vec_2 = jax.vmap(planner_T_vec_1, 
-    in_axes=(None, None, None, None, None, 0, None))
-planner_T_vec_3 = jax.vmap(planner_T_vec_2, 
-    in_axes=(None, None, None, None, 0, None, None))
-planner_T_vectorized = jax.vmap(planner_T_vec_3, 
-    in_axes=(None, None, None, 0, None, None, None))
+planner_T_generator = jax.vmap(planner_T_generator,
+        in_axes=(None, None, None, None, None, 0))
+planner_T_generator = jax.vmap(planner_T_generator, 
+        in_axes=(None, None, None, None, 0, None))
+planner_T_generator = jax.vmap(planner_T_generator, 
+        in_axes=(None, None, None, 0, None, None))
+planner_T_generator = jax.vmap(planner_T_generator, 
+        in_axes=(None, None, 0, None, None, None))
 ```
 
 Now we construct the Bellman operator.
 
 ```{code-cell} ipython3
-def planner_T(parameters, sizes, arrays, v):
-    b_size, y_size = sizes
-    b_grid, y_t_nodes, y_n_nodes, Q = arrays
+@jax.jit
+def planner_T(model, v):
+    σ, η, β, ω, κ, r, b_grid, y_t_nodes, y_n_nodes, Q = model
+    b_size, y_size = len(b_grid), len(y_t_nodes)
     b_indices, y_indices = jnp.arange(b_size), jnp.arange(y_size)
     # Evaluate RHS of Bellman equation at all states and actions
-    val = planner_T_vectorized(v, parameters, arrays,
+    val = planner_T_generator(v, model,
                      b_indices, y_indices, y_indices, b_indices)
     # Maximize over bp
     return jnp.max(val, axis=-1)
 ```
 
-```{code-cell} ipython3
-planner_T = jax.jit(planner_T, static_argnums=(1,))
-```
-
 Here's a function that computes a greedy policy (best response to $v$).
 
 ```{code-cell} ipython3
-def planner_get_greedy(parameters, sizes, arrays, v):
-    b_size, y_size = sizes
-    b_grid, y_t_nodes, y_n_nodes, Q = arrays
+@jax.jit
+def planner_get_greedy(model, v):
+    σ, η, β, ω, κ, r, b_grid, y_t_nodes, y_n_nodes, Q = model
+    b_size, y_size = len(b_grid), len(y_t_nodes)
     b_indices, y_indices = jnp.arange(b_size), jnp.arange(y_size)
     # Evaluate RHS of Bellman equation at all states and actions
-    val = planner_T_vectorized(v, parameters, arrays,
+    val = planner_T_generator(v, model,
                      b_indices, y_indices, y_indices, b_indices)
     # Maximize over bp
     return jnp.argmax(val, axis=-1)
-```
-
-```{code-cell} ipython3
-planner_get_greedy = jax.jit(planner_get_greedy, static_argnums=(1,))
 ```
 
 Computing the planner solution is straightforward value function iteration:
@@ -731,14 +724,14 @@ def compute_planner_solution(model):
     Compute the constrained planner solution.
 
     """
-    parameters, sizes, arrays = model
-    b_size, y_size = sizes
+    σ, η, β, ω, κ, r, b_grid, y_t_nodes, y_n_nodes, Q = model
+    b_size, y_size = len(b_grid), len(y_t_nodes)
     b_indices = jnp.arange(b_size)
     v_init = jnp.ones((b_size, y_size, y_size))
-    _T = lambda v: planner_T(parameters, sizes, arrays, v)
+    _T = lambda v: planner_T(model, v)
     # Compute household response to current guess H
     v, vfi_num_iter = vfi(_T, v_init)
-    bp_policy = planner_get_greedy(parameters, sizes, arrays, v)
+    bp_policy = planner_get_greedy(model, v)
     return v, bp_policy, vfi_num_iter
 ```
 
@@ -752,15 +745,14 @@ Here we compute the two solutions.
 
 ```{code-cell} ipython3
 model = create_overborrowing_model()
-parameters, sizes, arrays = model
-b_size, y_size = sizes
-b_grid, y_t_nodes, y_n_nodes, Q = arrays
+σ, η, β, ω, κ, r, b_grid, y_t_nodes, y_n_nodes, Q = model
+b_size, y_size = len(b_grid), len(y_t_nodes)
 ```
 
 ```{code-cell} ipython3
 print("Computing decentralized solution.")
 in_time = time.time()
-H_eq = compute_equilibrium(parameters, sizes, arrays)
+H_eq = compute_equilibrium(model)
 out_time = time.time()
 diff = out_time - in_time
 print(f"Computed decentralized equilibrium in {diff} seconds")
@@ -800,7 +792,9 @@ dynamics for income.
 
 Nonetheless, it is qualitatively similar.
 
-**Exercise**
++++
+
+## Exercise
 
 Your task is to examine the ergodic distribution of borrowing in the decentralized and
 planner equilibria.
@@ -843,11 +837,13 @@ If you are successful, your plot should look something like Fig 2 of Bianchi (20
 To generate a kernel density plot, we recommend that you use `kdeplot` from the package `seaborn`, which is included in Anaconda.
 
 ```{code-cell} ipython3
-for i in range(12):
+for i in range(18):
     print("Solution below.")
 ```
 
-**Solution**
+```{code-cell} ipython3
+import seaborn  # For kernel density plots
+```
 
 ```{code-cell} ipython3
 sim_length = 100_000
@@ -886,8 +882,8 @@ seaborn.kdeplot(eq_b_sequence, ax=ax, label='decentralized')
 seaborn.kdeplot(plan_b_sequence, ax=ax, label='planner')
 ax.legend()
 ax.set_xlim((-1, -0.5))
-ax.set_xlabel("probability")
-ax.set_ylabel("bond holdings")
+ax.set_xlabel("bond holdings")
+ax.set_ylabel("probability")
 plt.show()
 ```
 

@@ -68,11 +68,12 @@ $$
 subject to
 
 $$
-    a_{t+1} \leq  R(a_t - c_t)  + Y_{t+1},
-    \quad c_t \geq 0,
-    \quad a_t \geq 0
-    \quad t = 0, 1, \ldots
+    a_{t+1} = R(a_t - c_t)  + Y_{t+1}
+    \quad \text{and}
+    \quad 0 \leq c_t \leq a_t \quad \text{for } t \geq 0
 $$
+
+Here
 
 * $\beta \in (0,1)$ is a discount factor
 * $R = 1 + r$ where $r$ is the interest rate
@@ -137,7 +138,7 @@ $$
 
 We solve for this policy via the endogenous grid method (EGM).
 
-
++++
 
 ### Euler equation
 
@@ -167,6 +168,8 @@ $$
 
 where $(u' \circ \sigma)(a, y) := u'(\sigma(a, y))$ and $\sigma$ is a consumption
 policy.
+
++++
 
 Let's set up an operator $K$ that updates policies and coverges to an optimal
 consumption policy.
@@ -241,7 +244,7 @@ c = \begin{cases}
                & \text{if } a > \bar a (y) \\
             a  & \text{if } a \leq \bar a (y)
     \end{cases}
-$$ (eq:oro)
+$$ 
 
 We begin with an *exogenous* grid of saving values $0 = s_0 < \ldots < s_{N-1}$
 
@@ -268,9 +271,7 @@ $$
     a_i = s_i + c_i 
 $$ 
 
-We claim that each pair $a_i, c_i$ obeys [](eq:oro).
-
-Indeed, since $s_i > 0$, choosing $c_i$ as above gives
+Since $s_i > 0$, choosing $c_i$ as above gives
 
 $$
     c_i
@@ -298,8 +299,11 @@ $$
 
 Thus, we have computed $K\sigma(a_i, y)$.
 
+Repeating over all $i$ allows us to calculate $K\sigma$ at all (endogenous) grid points.
+
 We are now ready to iterate with $K$.
 
++++
 
 ## JAX version 
 
@@ -307,7 +311,7 @@ First we define a vectorized operator $K$ based on the EGM.
 
 Notice in the code below that 
 
-* we avoid all loops and any mutation of arrays
+* we avoid all loops by vectorization
 * the function is pure (no globals, no mutation of inputs)
 
 ```{code-cell} ipython3
@@ -356,10 +360,6 @@ def K_egm_jax(a_vec, σ, model):
     return a_out, σ_out
 ```
 
-```{code-cell} ipython3
-
-```
-
 Next we define a successive approximator that repeatedly applies $K$.
 
 ```{code-cell} ipython3
@@ -383,12 +383,12 @@ def successive_approx_jax(model,
     error = tol + 1
 
     while i < max_iter and error > tol:
-        a_new, σ_new = K_egm_jax(a_vec, σ_vec, model)    
+        a_new, σ_new = K_egm_jax(a_vec, σ_vec, model)
         error = jnp.max(jnp.abs(σ_vec - σ_new))
         i += 1
         if verbose and i % print_skip == 0:
             print(f"Error at iteration {i} is {error}.")
-        a_vec, σ_vec = jnp.copy(a_new), jnp.copy(σ_new)
+        a_vec, σ_vec = a_new, σ_new
 
     if error > tol:
         print("Failed to converge!")
@@ -474,7 +474,7 @@ def successive_approx_numba(model,        # Class with model information
         i += 1
         if verbose and i % print_skip == 0:
             print(f"Error at iteration {i} is {error}.")
-        a_vec, σ_vec = np.copy(a_new), np.copy(σ_new)
+        a_vec, σ_vec = a_new, σ_new
 
     if error > tol:
         print("Failed to converge!")
@@ -499,15 +499,15 @@ model = ifp()
 Here's a first run of the JAX code.
 
 ```{code-cell} ipython3
-a_star_egm_jax, σ_star_egm_jax = successive_approx_jax(model,
-                                                       print_skip=100)
+a_star_jax, σ_star_jax = successive_approx_jax(model,
+                                               print_skip=100)
 ```
 
 Next let's solve the same IFP with Numba.
 
 ```{code-cell} ipython3
-a_star_egm_nb, σ_star_egm_nb = successive_approx_numba(model,
-                                                        print_skip=100)
+a_star_nb, σ_star_nb = successive_approx_numba(model,
+                                                print_skip=100)
 ```
 
 Now let's check the outputs in a plot to make sure they are the same.
@@ -519,12 +519,12 @@ s_size, y_size = len(s_grid), len(y_grid)
 fig, ax = plt.subplots()
 
 for z in (0, y_size-1):
-    ax.plot(a_star_egm_nb[:, z], 
-            σ_star_egm_nb[:, z], 
+    ax.plot(a_star_nb[:, z], 
+            σ_star_nb[:, z], 
             '--', lw=2,
             label=f"Numba EGM: consumption when $z={z}$")
-    ax.plot(a_star_egm_jax[:, z], 
-            σ_star_egm_jax[:, z], 
+    ax.plot(a_star_jax[:, z], 
+            σ_star_jax[:, z], 
             label=f"JAX EGM: consumption when $z={z}$")
 
 ax.set_xlabel('asset')
@@ -538,23 +538,128 @@ Now let's compare execution time of the two methods
 
 ```{code-cell} ipython3
 qe.tic()
-a_star_egm_jax, σ_star_egm_jax = successive_approx_jax(model,
+a_star_jax, σ_star_jax = successive_approx_jax(model,
                                          print_skip=1000)
 jax_time = qe.toc()
 ```
 
 ```{code-cell} ipython3
 qe.tic()
-a_star_egm_nb, σ_star_egm_nb = successive_approx_numba(model,
+a_star_nb, σ_star_nb = successive_approx_numba(model,
                                          print_skip=1000)
 numba_time = qe.toc()
 ```
 
+How much faster is JAX?
+
 ```{code-cell} ipython3
-jax_time / numba_time
+numba_time / jax_time
 ```
 
 The JAX code is significantly faster, as expected.
 
 This difference will increase when more features (and state variables) are added
 to the model.
+
++++
+
+## Exercise
+
+Try replacing `successive_approx_jax` with a jitted version (`@jax.jit` at the top) that uses `jax.lax.while_loop`.
+
+Measure the execution time (after running once to compile) and compare it with the timings above.
+
+Also plot the resulting functions using the plotting code above to make sure that you're still getting the same outputs.
+
+```{code-cell} ipython3
+#Put your code here
+```
+
+```{code-cell} ipython3
+for i in range(18):
+    print("Solution below! 🐘")
+```
+
+```{code-cell} ipython3
+@jax.jit
+def successive_approx_jax_jitted(
+                          model,        
+                          tol=1e-5,
+                          max_iter=100_000,
+                          verbose=True,
+                          print_skip=25):
+
+    # Unpack
+    β, R, γ, s_grid, y_grid, P = model
+    s_size, y_size = len(s_grid), len(y_grid)
+    
+    # Initial condition is to consume all in every state
+    σ_init = jnp.repeat(s_grid, y_size)
+    σ_init = jnp.reshape(σ_init, (s_size, y_size))
+    a_init = jnp.copy(σ_init)
+
+    def update(state):
+        i, a_vec, σ_vec, error = state
+        a_new, σ_new = K_egm_jax(a_vec, σ_vec, model) 
+        error = jnp.max(jnp.abs(σ_vec - σ_new))
+        i += 1
+        return i, a_new, σ_new, error
+
+    def condition(state):
+        i, a_vec, σ_vec, error = state
+        return jnp.logical_and(i < max_iter, error > tol)
+
+    init_state = (0, a_init, σ_init, tol + 1)
+    state = jax.lax.while_loop(condition, update, init_state)
+
+    return state
+```
+
+Here's a first run.
+
+```{code-cell} ipython3
+
+i, a_star_jax_jit, σ_star_jax_jit, error = successive_approx_jax_jitted(model,
+                                                     print_skip=1000)
+```
+
+```{code-cell} ipython3
+print(f"Run completed in {i} iterations with error {error:.5}.")
+```
+
+Now let's time it.
+
+```{code-cell} ipython3
+qe.tic()
+i, a_star_jax_jit, σ_star_jax_jit, error = successive_approx_jax_jitted(model,
+                                                     print_skip=1000)
+jax_jit_time = qe.toc()
+```
+
+```{code-cell} ipython3
+jax_time / jax_jit_time
+```
+
+```{code-cell} ipython3
+numba_time / jax_jit_time
+```
+
+```{code-cell} ipython3
+β, R, γ, s_grid, y_grid, P = model
+s_size, y_size = len(s_grid), len(y_grid)
+
+fig, ax = plt.subplots()
+
+for z in (0, y_size-1):
+    ax.plot(a_star_jax_jit[:, z], 
+            σ_star_jax_jit[:, z], 
+            label=f"JAX EGM: consumption when $z={z}$")
+
+ax.set_xlabel('asset')
+plt.legend()
+plt.show()
+```
+
+```{code-cell} ipython3
+
+```
