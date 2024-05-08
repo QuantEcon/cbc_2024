@@ -32,13 +32,13 @@ development and high performance computing.
 
 ## Topics
 
-### Monday: Overview and Python intro
+### Monday: overview and Python intro
 
 * An overview of modern scientific computing
 * AI and its impact on economic modeling
 * Quick introduction to Python
 
-### Tuesday: Scientific Python
+### Tuesday: scientific Python
 
 * Linear regression with Python
 * Accelerating Python using Numba and Fortran
@@ -47,7 +47,7 @@ development and high performance computing.
 * Wealth dynamics (simple model)
 * Markov chains
 
-### Wednesday: JAX, GPUs and Autodiff
+### Wednesday: JAX, GPUs and autodiff
 
 * Introduction to JAX and GPU computing
 * Automatic differentiation
@@ -56,13 +56,13 @@ development and high performance computing.
 * Inventory dynamics revisited
 * Job search
 
-### Thursday: Dynamic programming with JAX
+### Thursday: dynamic programming with JAX
 
 * Dynamic programming: theory and algorithms
 * Optimal savings problems (JAX)
 * Endogenous grid method (JAX)
 
-### Friday: Equilibrium models with JAX
+### Friday: equilibrium models with JAX
 
 * Aiyagari model
 * Arellano sovereign default model
@@ -79,7 +79,9 @@ development and high performance computing.
 All participants should bring laptop computers.  If possible, participants
 should bring laptops with the ability to install open source software. For those
 without such permissions, a cloud computing option will be provided. The courses
-assume knowledge of the fundamentals of linear algebra, analysis, optimization
+assume knowledge of the fundamentals of linear algebra, analysis, dynamic optimization
 and probability.
+
+Suitable background can be found in the first few chapters of [Dynamic Programming](https://dp.quantecon.org).
 
 
