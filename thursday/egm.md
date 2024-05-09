@@ -24,18 +24,22 @@ kernelspec:
 
 In this lecture we use the endogenous grid method (EGM) to solve a basic optimal savings problem.
 
-We provide both Numba and JAX versions.
+Our main implementation is in JAX, although we also run a Numba version for comparison.
+
+Our treatment of EGM is quite brief -- we just outline the algorithm.
+
+Readers who want more background can see [this lecture](https://python.quantecon.org/egm_policy_iter.html).
 
 
 Uncomment if necessary:
 
-```{code-cell} ipython3
+```{code-cell}
 #!pip install --upgrade quantecon
 ```
 
 Let's run some imports
 
-```{code-cell} ipython3
+```{code-cell}
 import quantecon as qe
 from collections import namedtuple
 import matplotlib.pyplot as plt
@@ -47,13 +51,13 @@ import numba
 
 What GPU are we running?
 
-```{code-cell} ipython3
+```{code-cell}
 !nvidia-smi
 ```
 
 We use 64 bit floating point numbers for extra precision.
 
-```{code-cell} ipython3
+```{code-cell}
 jax.config.update("jax_enable_x64", True)
 ```
 
@@ -87,6 +91,35 @@ $$
 
 where $\{\epsilon_t\}$ is IID and standard normal.
 
++++
+
+### Euler iteration (time iteration)
+
+Let $S = \mathbb R_+ \times \mathsf Y$ be the set of possible values for the state $(a_t, Y_t)$.
+
+We aim to compute an optimal consumption policy $\sigma \colon S \to \mathbb R$, under which dynamics are given by
+
+$$
+    c_t = \sigma(a_t, Y_t)
+    \quad \text{and} \quad
+    a_{t+1} = R (a_t - c_t) + Y_{t+1}
+$$
+
+
+We solve for this policy via the endogenous grid method (EGM).
+
+EGM is a special case of an algorithm called either "time iteration" (a bad name) or "Euler iteration" (a better one).
+
+Euler iteration involves guessing a consumption policy $\sigma$ and then updating it using the Euler equation.
+
+We call the update rule $K$ and think of $K$ as an operator.
+
+EGM is a technique for computing the update (computing $K\sigma$ from $\sigma$) via approximation that is very fast in simple settings (but often fails or does not exist in more complex ones).
+
++++
+
+## Specification
+
 Utility has the CRRA specification
 
 $$
@@ -95,13 +128,13 @@ $$
 
 We start with a namedtuple to store parameters and arrays
 
-```{code-cell} ipython3
+```{code-cell}
 Model = namedtuple('Model', ('β', 'R', 'γ', 's_grid', 'y_grid', 'P'))
 ```
 
 The following function stores default parameter values for the income fluctuation problem and creates suitable arrays.
 
-```{code-cell} ipython3
+```{code-cell}
 def ifp(R=1.01,             # Gross interest rate
         β=0.99,             # Discount factor
         γ=1.5,              # CRRA preference parameter
@@ -123,200 +156,108 @@ def ifp(R=1.01,             # Gross interest rate
     return Model(β, R, γ, s_grid, y_grid, P)
 ```
 
-### Solution method
-
-Let $S = \mathbb R_+ \times \mathsf Y$ be the set of possible values for the state $(a_t, Y_t)$.
-
-We aim to compute an optimal consumption policy $\sigma^* \colon S \to \mathbb R$, under which dynamics are given by
-
-$$
-    c_t = \sigma^*(a_t, Y_t)
-    \quad \text{and} \quad
-    a_{t+1} = R (a_t - c_t) + Y_{t+1}
-$$
+### The EGM algorithm
 
 
-We solve for this policy via the endogenous grid method (EGM).
+We take as given a fixed and *exogenous* grid of saving values $s = s[i]$
 
-+++
+We begin with a pair of arrays $a[i, j]$ and $\sigma[i, j]$, where $i$ is in `range(len(s_grid))` and $j$ is in `range(len(y_grid))`.
 
-### Euler equation
-
-The Euler equation for the optimization problem is
-
-$$
-    u' (c_t)
-    = \max \left\{
-        \beta R \,  \mathbb{E}_t  u'(c_{t+1})  \,,\;  u'(a_t)
-    \right\}
-$$
-
-(An explanation for this expression can be found [here](https://python.quantecon.org/ifp.html#value-function-and-euler-equation).)
-
-We rewrite the Euler equation in functional form
-
-$$
-    (u' \circ \sigma)  (a, y)
-    = \max \left\{
-    \beta R \, \mathbb E_y (u' \circ \sigma)
-        [R (a - \sigma(a, y)) + \hat Y, \, \hat Y]
-    \, , \;
-         u'(a)
-         \right\}
-$$
+Fixing $j$, we linearly interpolate $a[:, j]$ and $\sigma[:, j]$ to great a consumption policy when income is in state $j$ --- let's also denote this consumption policy by  $\sigma$. 
 
 
-where $(u' \circ \sigma)(a, y) := u'(\sigma(a, y))$ and $\sigma$ is a consumption
-policy.
-
-+++
-
-Let's set up an operator $K$ that updates policies and coverges to an optimal
-consumption policy.
-
-Fixing policy $\sigma$, we define $(K \sigma) (a,y)$ as the unique $c \in [0, a]$ that solves
-
-$$
-u'(c)
-= \max \left\{
-           \beta R \, \mathbb E_y (u' \circ \sigma) \,
-           [R (a - c) + \hat Y, \, \hat Y]
-           \, , \;
-           u'(a)
-     \right\}
-$$ 
-
-It [can be shown that](https://python.quantecon.org/ifp.html)
-
-1. iterating with $K$ computes an optimal policy and
-2. if $\sigma$ is increasing in its first argument, then so is $K\sigma$
-
-
-### EGM
-
-EGM is a technique for computing $K\sigma$ given $\sigma$ along a grid of asset values.
-
-Notice that, since $u'(a) \to \infty$ as $a \downarrow 0$, 
-
-* the second term in the max above dominates for sufficiently small $a$.
-* We have $c=a$ for all such $a$.
-
-Hence, for sufficiently small $a$,
-
-$$
-   u'(a) \geq
-   \beta R \, \mathbb E_y (u' \circ \sigma) \,
-           [\hat Y, \, \hat Y]
-$$
-
-Equality holds at $\bar a(y)$ given by 
-
-$$
-   \bar a (y) =
-   (u')^{-1}
-   \left\{
-       \beta R \, \mathbb E_y (u' \circ \sigma) \,
-               [\hat Y, \, \hat Y]
-   \right\}
-$$
-
-We can now write
-
-$$
-u'(c)
-    = \begin{cases}
-        \beta R \, \mathbb E_y (u' \circ \sigma) \,
-               [R (a - c) + \hat Y, \, \hat Y]
-               & \text{if } a > \bar a (y) \\
-        u'(a)  & \text{if } a \leq \bar a (y)
-    \end{cases}
-$$
-
-Equivalently, we can state that the $c$ satisfying $c = (K\sigma)(a, y)$ obeys
-
-$$
-c = \begin{cases}
-        (u')^{-1}
-        \left\{
-            \beta R \, \mathbb E_y (u' \circ \sigma) \,
-               [R (a - c) + \hat Y, \, \hat Y]
-        \right\}
-               & \text{if } a > \bar a (y) \\
-            a  & \text{if } a \leq \bar a (y)
-    \end{cases}
-$$ 
-
-We begin with an *exogenous* grid of saving values $0 = s_0 < \ldots < s_{N-1}$
-
-Using the exogenous savings grid, and a fixed value of $y$, we create an *endogenous* asset grid
-$a_0, \ldots, a_{N-1}$ and a consumption grid $c_0, \ldots, c_{N-1}$ as follows.
-
-First we set $a_0 = c_0 = 0$, since zero consumption is an optimal (in fact the only) choice when $a=0$.
+Next we set $a_0 = c_0 = 0$, since zero consumption is the only choice when $a=0$.
 
 Then, for $i > 0$, we compute 
 
 $$
-    c_i
+    c[i, j]
     = (u')^{-1}
     \left\{ 
-        \beta R \, \mathbb E_y (u' \circ \sigma) \,
-               [R s_i + \hat Y, \, \hat Y]
+        \beta R \, \mathbb \sum_{j'} u' 
+        \left [
+        \sigma(R s[i] + y[j'], \, j')
+        \right]  P[j, j']
      \right\}
-     \quad \text{for all } i
 $$ 
 
 and we set 
 
 $$
-    a_i = s_i + c_i 
+    a[i, j] = s[i] + c[i, j] 
 $$ 
 
-Since $s_i > 0$, choosing $c_i$ as above gives
+Now we increment $j$ and then repeat over all $i$.
 
-$$
-    c_i
-    = (u')^{-1}
-    \left\{ 
-        \beta R \, \mathbb E_y (u' \circ \sigma) \,
-               [R s_i + \hat Y, \, \hat Y]
-     \right\}
-     \geq \bar a(y)
-$$
+This gives us a new pair of arrays $a = a[i, j]$ and $\sigma = \sigma[i, j]$.
 
-where the inequality uses the fact that $\sigma$ is increasing in its first argument.
+Now we repeat the whole procedure, each time updating $a$ and $\sigma$.
 
-If we now take $a_i = s_i + c_i$ we get $a_i > \bar a(y)$, so the pair $(a_i, c_i)$ satisfies
-
-$$
-    c_i
-    = (u')^{-1}
-    \left\{ 
-        \beta R \, \mathbb E_y (u' \circ \sigma) \,
-               [R (a_i - c_i) + \hat Y, \, \hat Y]
-     \right\}
-     \quad \text{and} \quad a_i > \bar a(y)
-$$
-
-Thus, we have computed $K\sigma(a_i, y)$.
-
-Repeating over all $i$ allows us to calculate $K\sigma$ at all (endogenous) grid points.
-
-We are now ready to iterate with $K$.
+Once iteration finishes, $\sigma[i, j]$ contains (approximately) optimal consumption when assets are $a[i,j]$ and income is in state $j$.
 
 +++
 
 ## JAX version 
 
-First we define a vectorized operator $K$ based on the EGM.
+First we define an operator $K$ for updating consumption policies based on the EGM.
 
-Notice in the code below that 
+We'll try a `vmap` version and then we'll try a vectorized version using reshapes.
 
-* we avoid all loops by vectorization
-* the function is pure (no globals, no mutation of inputs)
+Here's a non-vectorized version of $K$ that we can apply `vmap` to:
 
-```{code-cell} ipython3
+```{code-cell}
+def K_jax_generator(a_vec, σ_vec, model, i, j):
+    """
+    Computes Kσ evaluated at (a_i, y_j).
+    
+    """
+    # Unpack
+    β, R, γ, s_grid, y_grid, P = model
+    y_grid_idx = jnp.arange(len(y_grid))
+    s_i = s_grid[i]  
+    
+    def u_prime(c):
+        return c**(-γ)
+
+    def u_prime_inv(u):
+            return u**(-1/γ)
+
+    # Evaluate σ(R s_i + y_k, y_k) over all future income states k
+    def f(k):
+        return jnp.interp(R * s_i + y_grid[k], a_vec[:, k], σ_vec[:, k])
+    consumption_vals = jax.vmap(f)(y_grid_idx)
+    
+    # Evaluate consumption choice
+    E = u_prime(consumption_vals) @ P[j, :]
+    c_i = u_prime_inv(β * R * E)
+    c_i = c_i * (i > 0)  # When s_i = 0, set c_i = 0
+    a_i = s_i + c_i
+
+    return a_i, c_i
+```
+
+```{code-cell}
+K_jax_generator = jax.vmap(K_jax_generator,
+                           in_axes=(None, None, None, None, 0))
+K_jax_generator = jax.vmap(K_jax_generator,
+                           in_axes=(None, None, None, 0, None))
+```
+
+```{code-cell}
 @jax.jit
-def K_egm_jax(a_vec, σ, model):
+def K_jax(a_vec, σ_vec, model):
+    # Unpack
+    β, R, γ, s_grid, y_grid, P = model
+    s_size, y_size = len(s_grid), len(y_grid)
+    s_indices, y_indices = jnp.arange(s_size), jnp.arange(y_size)
+    return K_jax_generator(a_vec, σ_vec, model, s_indices, y_indices)
+```
+
+Here's the vectorized version using reshapes.
+
+```{code-cell}
+@jax.jit
+def K_jax_vectorized(a_vec, σ, model):
     "The vectorized operator K using EGM."
     
     # Unpack
@@ -360,9 +301,57 @@ def K_egm_jax(a_vec, σ, model):
     return a_out, σ_out
 ```
 
+Let's check that they compute the same thing.
+
+```{code-cell}
+# Unpack
+model = ifp()
+β, R, γ, s_grid, y_grid, P = model
+s_size, y_size = len(s_grid), len(y_grid)
+```
+
+```{code-cell}
+# Initial condition is to consume all in every state
+σ_vec = jnp.repeat(s_grid, y_size)
+σ_vec = jnp.reshape(σ_vec, (s_size, y_size))
+a_vec = jnp.copy(σ_vec)
+```
+
+```{code-cell}
+a_vmap, σ_vmap = K_jax(a_vec, σ_vec, model)
+```
+
+```{code-cell}
+a_vectorized, σ_vectorized = K_jax_vectorized(a_vec, σ_vec, model)
+```
+
+```{code-cell}
+jnp.allclose(a_vmap, a_vectorized)
+```
+
+```{code-cell}
+jnp.allclose(σ_vmap, σ_vectorized)
+```
+
+OK, so they compute the same thing.  Now let's test timing over multiple runs via `timeit`:
+
+```{code-cell}
+%timeit _, _ = K_jax(a_vec, σ_vec, model)
+```
+
+```{code-cell}
+%timeit _, _ = K_jax_vectorized(a_vec, σ_vec, model)
+```
+
+The two versions run in about the same time.
+
+We'll use the `vmap` version in what follows.
+
++++
+
 Next we define a successive approximator that repeatedly applies $K$.
 
-```{code-cell} ipython3
+```{code-cell}
 def successive_approx_jax(model,        
                           tol=1e-5,
                           max_iter=100_000,
@@ -383,7 +372,7 @@ def successive_approx_jax(model,
     error = tol + 1
 
     while i < max_iter and error > tol:
-        a_new, σ_new = K_egm_jax(a_vec, σ_vec, model)
+        a_new, σ_new = K_jax(a_vec, σ_vec, model)
         error = jnp.max(jnp.abs(σ_vec - σ_new))
         i += 1
         if verbose and i % print_skip == 0:
@@ -408,9 +397,9 @@ well as to do a runtime comparison.
 Most readers will want to skip ahead to the next section, where we solve the
 model and run the cross-check.
 
-```{code-cell} ipython3
+```{code-cell}
 @numba.jit
-def K_egm_nb(a_vec, σ, model):
+def K_nb(a_vec, σ, model):
     "The operator K using Numba."
 
     # Unpack
@@ -445,7 +434,7 @@ def K_egm_nb(a_vec, σ, model):
     return a_out, σ_out
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def successive_approx_numba(model,        # Class with model information
                             tol=1e-5,
                             max_iter=100_000,
@@ -469,7 +458,7 @@ def successive_approx_numba(model,        # Class with model information
     error = tol + 1
 
     while i < max_iter and error > tol:
-        a_new, σ_new = K_egm_nb(a_vec, σ_vec, model)
+        a_new, σ_new = K_nb(a_vec, σ_vec, model)
         error = np.max(np.abs(σ_vec - σ_new))
         i += 1
         if verbose and i % print_skip == 0:
@@ -492,30 +481,29 @@ We will compare both the outputs and the execution time.
 
 ### Outputs
 
-```{code-cell} ipython3
+```{code-cell}
 model = ifp()
+β, R, γ, s_grid, y_grid, P = model
+s_size, y_size = len(s_grid), len(y_grid)
 ```
 
 Here's a first run of the JAX code.
 
-```{code-cell} ipython3
+```{code-cell}
 a_star_jax, σ_star_jax = successive_approx_jax(model,
                                                print_skip=100)
 ```
 
 Next let's solve the same IFP with Numba.
 
-```{code-cell} ipython3
+```{code-cell}
 a_star_nb, σ_star_nb = successive_approx_numba(model,
                                                 print_skip=100)
 ```
 
 Now let's check the outputs in a plot to make sure they are the same.
 
-```{code-cell} ipython3
-β, R, γ, s_grid, y_grid, P = model
-s_size, y_size = len(s_grid), len(y_grid)
-
+```{code-cell}
 fig, ax = plt.subplots()
 
 for z in (0, y_size-1):
@@ -536,14 +524,14 @@ plt.show()
 
 Now let's compare execution time of the two methods
 
-```{code-cell} ipython3
+```{code-cell}
 qe.tic()
 a_star_jax, σ_star_jax = successive_approx_jax(model,
                                          print_skip=1000)
 jax_time = qe.toc()
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 qe.tic()
 a_star_nb, σ_star_nb = successive_approx_numba(model,
                                          print_skip=1000)
@@ -552,7 +540,7 @@ numba_time = qe.toc()
 
 How much faster is JAX?
 
-```{code-cell} ipython3
+```{code-cell}
 numba_time / jax_time
 ```
 
@@ -571,16 +559,16 @@ Measure the execution time (after running once to compile) and compare it with t
 
 Also plot the resulting functions using the plotting code above to make sure that you're still getting the same outputs.
 
-```{code-cell} ipython3
+```{code-cell}
 #Put your code here
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 for i in range(18):
     print("Solution below! 🐘")
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 @jax.jit
 def successive_approx_jax_jitted(
                           model,        
@@ -600,7 +588,7 @@ def successive_approx_jax_jitted(
 
     def update(state):
         i, a_vec, σ_vec, error = state
-        a_new, σ_new = K_egm_jax(a_vec, σ_vec, model) 
+        a_new, σ_new = K_jax(a_vec, σ_vec, model) 
         error = jnp.max(jnp.abs(σ_vec - σ_new))
         i += 1
         return i, a_new, σ_new, error
@@ -617,34 +605,33 @@ def successive_approx_jax_jitted(
 
 Here's a first run.
 
-```{code-cell} ipython3
-
+```{code-cell}
 i, a_star_jax_jit, σ_star_jax_jit, error = successive_approx_jax_jitted(model,
                                                      print_skip=1000)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 print(f"Run completed in {i} iterations with error {error:.5}.")
 ```
 
 Now let's time it.
 
-```{code-cell} ipython3
+```{code-cell}
 qe.tic()
 i, a_star_jax_jit, σ_star_jax_jit, error = successive_approx_jax_jitted(model,
                                                      print_skip=1000)
 jax_jit_time = qe.toc()
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 jax_time / jax_jit_time
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 numba_time / jax_jit_time
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 β, R, γ, s_grid, y_grid, P = model
 s_size, y_size = len(s_grid), len(y_grid)
 
@@ -660,6 +647,6 @@ plt.legend()
 plt.show()
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 
 ```
