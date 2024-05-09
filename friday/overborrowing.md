@@ -40,17 +40,16 @@ from collections import namedtuple
 
 ## Description of the model
 
-The model seeks to explain sudden stops in emerging market economies, where
-painful financial disruption follows a period of sustained heavy borrowing.
+The model seeks to explain sudden stops in emerging market economies.
 
 A representative household chooses how much to borrow on international markets and how much to consume.
 
 The household is credit constrained, with the constraint depending on both current income and the real exchange rate.
 
-The model shows that household overborrow because they do not internalize the
+Household "overborrow" (relative to a planner) because they do not internalize the
 effect of borrowing on the credit constraint.
 
-This overborrowing leaves them vulnerable to bad shocks in current income.
+This overborrowing leaves them vulnerable to bad income shocks.
 
 In essence, the model works as follows
 
@@ -76,7 +75,7 @@ an expected sum of discounted utility where
   and
 * $c = (\omega c_t^{-\eta} + (1-\omega) c_n^{-\eta})^{-1/\eta}$
 
-Here $c_t$ ($c_n$) is consumption of tradables (nontradables).
+Here $c_t$ (resp., $c_n$) is consumption of tradables (resp., nontradables).
 
 +++
 
@@ -113,7 +112,10 @@ $$
     c_t = y_t + (1+r)b - b'
 $$
 
-The household takes the aggregate timepath for bonds as given by $B' = H(B, y)$
+The household takes the aggregate timepath for bonds as given by 
+
+$$B' = H(B, y)$$
+
 and solves
 
 $$
@@ -128,8 +130,9 @@ subject to the budget and credit constraints.
 
 +++
 
-A decentralized equilibrium is a law of motion $H$ such that the implied savings 
-policy $b' = b'(b, B, y)$ verifies 
+Let the solution to the dynamic program be the policy $b'(b, B, y) = $ savings decision in state $(b, B, y)$.
+
+A decentralized equilibrium is a law of motion $H$ such that verifies 
 
 $$
     b'(B, B, y) = H(B, y)
@@ -221,7 +224,7 @@ $$
 where 
 
 * $y = (y_t, y_n) = $ (tradables, nontradables)
-* $A$ is $2 x 2$
+* $A$ is $2 \times 2$
 * $u' \sim N(0, \Omega)$
 * the log function is applied pointwise
 
@@ -230,6 +233,9 @@ We use the following estimated values, reported on p. 12 of [Yamada (2023)](http
 ```{code-cell} ipython3
 A = [[0.2425,   0.3297],
      [-0.1984,  0.7576]]
+```
+
+```{code-cell} ipython3
 Ω = [[0.0052, 0.002],
      [0.002,  0.0059]]
 ```
@@ -365,7 +371,7 @@ Individual states and actions are
 
 * `c` = consumption of tradables (`c` rather than `c_t`)
 * `b` = household savings (bond holdings)
-* `bp` = household savings decision 
+* `bp` = household savings decision (next period bond holdings)
 
 Aggregate quantities and prices are
 
@@ -383,8 +389,8 @@ Model = namedtuple('Model',
 
 ```{code-cell} ipython3
 def create_overborrowing_model(
-        σ=2,                 # CRRA utility parameter
-        η=(1/0.83)-1,        # Elasticity = 0.83, η = 0.2048
+        σ=2.0,               # CRRA utility parameter
+        η=(1 / 0.83) - 1,    # Elasticity = 0.83, η = 0.2048
         β=0.91,              # Discount factor
         ω=0.31,              # Aggregation constant
         κ=0.3235,            # Constraint parameter
@@ -414,6 +420,12 @@ def create_overborrowing_model(
     # Pack and return
     return Model(σ, η, β, ω, κ, r, b_grid, y_t_nodes, y_n_nodes, Q)
 ```
+
+Default parameter values are from Bianchi.
+
+Notice that $\beta$ is quite small (too small?), so value function iteration will be relatively quick.  
+
++++
 
 Here's flow utility.
 
@@ -527,10 +539,6 @@ def T(model, v, H):
     return jnp.max(val, axis=-1)
 ```
 
-```{code-cell} ipython3
-
-```
-
 Here's a function that computes a greedy policy (best response to $v$).
 
 ```{code-cell} ipython3
@@ -610,10 +618,6 @@ def update_H(model, H, α):
     # Switch back to indices
     new_H = jnp.searchsorted(b_grid, new_H_vals)
     return new_H, vfi_num_iter
-```
-
-```{code-cell} ipython3
-
 ```
 
 Now we can write code to compute an equilibrium law of motion $H$.
