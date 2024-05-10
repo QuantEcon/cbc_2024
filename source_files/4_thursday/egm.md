@@ -398,6 +398,29 @@ Most readers will want to skip ahead to the next section, where we solve the
 model and run the cross-check.
 
 ```{code-cell}
+
+def ifp_numba(
+        R=1.01,             # Gross interest rate
+        β=0.99,             # Discount factor
+        γ=1.5,              # CRRA preference parameter
+        s_max=16,           # Savings grid max
+        s_size=200,         # Savings grid size
+        ρ=0.99,             # Income persistence
+        ν=0.02,             # Income volatility
+        y_size=25):         # Income grid size
+  
+    # require R β < 1 for convergence
+    assert R * β < 1, "Stability condition failed."
+
+    # Create arrays
+    mc = qe.tauchen(y_size, ρ, ν)
+    y_grid, P = np.exp(mc.state_values), mc.P
+    s_grid = np.linspace(0, s_max, s_size)
+
+    # Pack and return
+    return Model(β, R, γ, s_grid, y_grid, P)
+
+
 @numba.jit
 def K_nb(a_vec, σ, model):
     "The operator K using Numba."
@@ -481,22 +504,19 @@ We will compare both the outputs and the execution time.
 
 ### Outputs
 
-```{code-cell}
-model = ifp()
-β, R, γ, s_grid, y_grid, P = model
-s_size, y_size = len(s_grid), len(y_grid)
-```
 
 Here's a first run of the JAX code.
 
 ```{code-cell}
+model = ifp()
 a_star_jax, σ_star_jax = successive_approx_jax(model,
                                                print_skip=100)
 ```
 
-Next let's solve the same IFP with Numba.
+Here's a first run of the Numba code.
 
 ```{code-cell}
+model = ifp_numba()
 a_star_nb, σ_star_nb = successive_approx_numba(model,
                                                 print_skip=100)
 ```
@@ -505,6 +525,8 @@ Now let's check the outputs in a plot to make sure they are the same.
 
 ```{code-cell}
 fig, ax = plt.subplots()
+β, R, γ, s_grid, y_grid, P = model
+s_size, y_size = len(s_grid), len(y_grid)
 
 for z in (0, y_size-1):
     ax.plot(a_star_nb[:, z], 
@@ -525,6 +547,7 @@ plt.show()
 Now let's compare execution time of the two methods
 
 ```{code-cell}
+model = ifp()
 qe.tic()
 a_star_jax, σ_star_jax = successive_approx_jax(model,
                                          print_skip=1000)
@@ -532,6 +555,7 @@ jax_time = qe.toc()
 ```
 
 ```{code-cell}
+model = ifp_numba()
 qe.tic()
 a_star_nb, σ_star_nb = successive_approx_numba(model,
                                          print_skip=1000)
@@ -606,6 +630,7 @@ def successive_approx_jax_jitted(
 Here's a first run.
 
 ```{code-cell}
+model = ifp()
 i, a_star_jax_jit, σ_star_jax_jit, error = successive_approx_jax_jitted(model,
                                                      print_skip=1000)
 ```
@@ -645,8 +670,4 @@ for z in (0, y_size-1):
 ax.set_xlabel('asset')
 plt.legend()
 plt.show()
-```
-
-```{code-cell}
-
 ```

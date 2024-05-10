@@ -77,18 +77,12 @@ We will use the following function to compute stationary distributions of stocha
 
 @jax.jit
 def compute_stationary(P):
-    """
-    Computes the stationary distribution of P using an eigenvector routine.
+    n = P.shape[0]
+    I = jnp.identity(n)
+    O = jnp.ones((n, n))
+    A = I - jnp.transpose(P) + O
+    return jnp.linalg.solve(A, jnp.ones(n))
 
-    We use the fact that, for a stochastic matrix, the largest left eigenvalue is 1.0.
-    The corresponding eigenvector is the stationary distribution.
-    """
-    P = jnp.array(P)
-    eigvals, eigvecs = jnp.linalg.eig(P.T)
-    i = jnp.argmax(jnp.real(eigvals))  # index of largest eigenvalue
-    dominant_eigvec = jnp.real(eigvecs[:, i]) 
-    ψ_star = dominant_eigvec / jnp.sum(dominant_eigvec) # normalize
-    return ψ_star
 ```
 
 ## Firms

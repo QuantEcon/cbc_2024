@@ -59,7 +59,7 @@ computation.
 Uncomment if necessary:
 
 ```{code-cell}
-!pip install quantecon
+#!pip install quantecon
 ```
 
 We will use the following imports:

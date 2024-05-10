@@ -39,7 +39,7 @@ Our main focus will be the Epstein-Zin setting.
 Uncomment if necessary:
 
 ```{code-cell} ipython3
-!pip install quantecon
+#!pip install quantecon
 ```
 
 We will use the following imports.
