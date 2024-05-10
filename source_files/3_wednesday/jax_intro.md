@@ -104,15 +104,11 @@ A @ B
 ```
 
 ```{code-cell} ipython3
-from jax.numpy import linalg
+jnp.linalg.inv(B)   # Inverse of identity is identity
 ```
 
 ```{code-cell} ipython3
-linalg.inv(B)   # Inverse of identity is identity
-```
-
-```{code-cell} ipython3
-result = linalg.eigh(B)  # Computes eigenvalues and eigenvectors
+result = jnp.linalg.eigh(B)  # Computes eigenvalues and eigenvectors
 result.eigenvalues
 ```
 
