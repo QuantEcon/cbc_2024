@@ -1,7 +1,7 @@
 #! python
 import os
 import glob
-dirs = 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'
+dirs = '1_monday', '2_tuesday', '3_wednesday', '4_thursday', '5_friday'
 
 print('Converting Myst files to notebooks.')
 for dir in dirs:
