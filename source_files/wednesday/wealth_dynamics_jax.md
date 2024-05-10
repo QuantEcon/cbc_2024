@@ -760,7 +760,7 @@ Test this by
 Plot both on the same figure and examine the result.
 
 ```{code-cell} ipython3
-for i in range(12):
+for i in range(18):
     print("Solution below")
 ```
 

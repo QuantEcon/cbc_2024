@@ -11,7 +11,7 @@ kernelspec:
   name: python3
 ---
 
-# Programming Exercise: Lorenz Curves and Gini Coefficients
+# Lorenz Curves and Gini Coefficients
 
 -----
 
@@ -19,11 +19,12 @@ kernelspec:
 
 #### Prepared for the CBC Computational Workshop (May 2024)
 
-This notebook contains some programming exercises related to the Lorenz curve
-and the Gini coefficient, which are often used to study inequality.
+-----
 
-Your task will be to compute these curves and values, replicating functionality
-that already exists in `quantecon`.
+This notebook contains some exercises related to the Lorenz curve and the Gini
+coefficient, which are often used to study inequality.
+
+Our task will be to compute and examine these curves and values.
 
 Uncomment the following if necessary
 
@@ -40,8 +41,9 @@ import matplotlib.pyplot as plt
 import quantecon as qe
 ```
 
-## Preamble: The Lorenz curve and Gini coefficient
+## The Lorenz curve 
 
+Let's start by examining the Lorenz curve.
 
 ### Definition
 
@@ -76,8 +78,7 @@ people have $(100 \times y)$\% of all wealth.
 
 Let's look at an example.
 
-First we generate $n=2000$ draws from a lognormal distribution and treat these draws as our population.  
-
+First we generate $n=2000$ draws from a lognormal distribution and treat these draws as our population.
 
 ```{code-cell} ipython3
 n = 2000
@@ -94,7 +95,7 @@ Now let's plot.
 
 The straight line ($x=L(x)$ for all $x$) corresponds to perfect equality.  
 
-The lognormal draws produce a less equal distribution.  
+The lognormal draws produce a less equal distribution.
 
 ```{code-cell} ipython3
 fig, ax = plt.subplots()
@@ -109,20 +110,18 @@ ax.hlines(y[j], [0], x[j], alpha=0.5, colors='k', ls='--')
 plt.show()
 ```
 
-
 For example, if we imagine these draws as being observations of wealth across a
 sample of households, then the dashed lines show that the bottom 80\% of
 households own just over 40\% of total wealth.
 
 +++
 
-**Exercise**
+### Exercise: write a NumPy version
 
 Using the definition of the Lorenz curve given above and NumPy, try to write
 your own version of `qe.lorenz_curve`.  
 
-* If possible, accelerate your code with Numba
-
+See if you can write a version without any explicity loops.
 
 Try to replicate the figure above, using the same lognormal data set.
 
@@ -131,11 +130,43 @@ Try to replicate the figure above, using the same lognormal data set.
 ```
 
 ```{code-cell} ipython3
-for i in range(12):
-    print("Solution below.")
+for i in range(16):
+    print("Solution below!")
 ```
 
-**Solution**
+Here's one solution:
+
+```{code-cell} ipython3
+def lorenz_curve(w):
+    n = len(w)
+    w = np.sort(w)
+    x = np.arange(n + 1) / n
+    s = np.concatenate((np.zeros(1), np.cumsum(w)))
+    y = s / s[n]
+    return x, y
+```
+
+Let's test it:
+
+```{code-cell} ipython3
+x, y = lorenz_curve(sample)    # Our routine
+
+fig, ax = plt.subplots()
+ax.plot(x, y, label=f'lognormal sample', lw=2)
+ax.plot(x, x, label='equality', lw=2)
+ax.legend(fontsize=12)
+ax.set_ylim((0, 1))
+ax.set_xlim((0, 1))
+j = 1600  # dashed lines for j-th element
+ax.vlines(x[j], [0.0], y[j], alpha=0.5, colors='k', ls='--')
+ax.hlines(y[j], [0], x[j], alpha=0.5, colors='k', ls='--')
+plt.show()
+```
+
+### A Numba version
+
+If you prefer, you can use a for loop accelerated by Numba to compute the
+Lorenz curve:
 
 ```{code-cell} ipython3
 @numba.jit
@@ -164,10 +195,12 @@ j = 1600  # dashed lines for j-th element
 ax.vlines(x[j], [0.0], y[j], alpha=0.5, colors='k', ls='--')
 ax.hlines(y[j], [0], x[j], alpha=0.5, colors='k', ls='--')
 plt.show()
-
 ```
 
 ## The Gini coefficient
+
+Now let's examine the Gini coefficient.
+
 
 ### Definition
 
@@ -187,7 +220,7 @@ the Gini coefficient of the sample is defined by
 
 ### Using QuantEcon's routine
 
-Let's examine the Gini coefficient in some simulations using `gini_coefficient`
+Let's study the Gini coefficient in some simulations using `gini_coefficient`
 from `quantecon`.
 
 The following code computes the Gini coefficients for five different populations.
@@ -208,11 +241,8 @@ for σ in σ_vals:
     # Generate the data
     μ = -σ**2 / 2
     y = np.exp(μ + σ * np.random.randn(n))
-    # Calculate the Gini coefficient
-    ginis.append(qe.gini_coefficient(y))
-```
+    ginis.append(qe.gini_coefficient(y))  # Uses quantecon routine
 
-```{code-cell} ipython3
 fig, ax = plt.subplots()
 ax.plot(σ_vals, ginis, marker='o')
 ax.set_xlabel('$\sigma$', fontsize=12)
@@ -224,28 +254,72 @@ The plots show that inequality rises with $\sigma$ (as measured by the Gini coef
 
 +++
 
+### A NumPy version
 
-**Exercise**
+Let's write our own function to compute the Gini coefficient.
 
-Using the definition above and NumPy, try to write your own version of
-`qe.gini_coefficient`.  
+We'll start with a NumPy version that uses vectorized code to avoid loops.
 
-* Try to replicate the figure above.
-* If possible, accelerate your code with Numba
+```{code-cell} ipython3
+def gini(w):
+    w_size = len(w)
+    w_1 = np.reshape(w, (w_size, 1))
+    w_2 = np.reshape(w, (1, w_size))
+    g_sum = np.sum(np.abs(w_1 - w_2))
+    return g_sum / (2 * w_size * np.sum(w))
+```
+
+```{code-cell} ipython3
+ginis = []
+for σ in σ_vals:
+    # Generate the data
+    μ = -σ**2 / 2
+    y = np.exp(μ + σ * np.random.randn(n))
+    ginis.append(gini(y))  # Use our NumPy version
+
+fig, ax = plt.subplots()
+ax.plot(σ_vals, ginis, marker='o')
+ax.set_xlabel('$\sigma$', fontsize=12)
+ax.set_ylabel('Gini coefficient', fontsize=12)
+plt.show()
+```
+
+Notice, however, that the NumPy version of the Gini function is very memory intensive, since we create large intermediate arrays.
+
+For example, consider the following
+
+```{code-cell} ipython3
+w = np.exp(np.random.randn(1_000_000))
+w.sort()
+```
+
+```{code-cell} ipython3
+gini(w)
+```
+
+Unless you have massive memory, the code above gives an out-of-memory error.
+
+The next exercise asks you to write a more memory efficient version.
+
++++
+
+### Exercise: A Numba version
+
+Try to write your own function that computes the Gini coefficient, this time
+using Numba and loops to produce effient code
+
+* Try to replicate the Gini figure above.
 * If possible, parallelize one of the loops
+* See if your code runs on `w = np.exp(np.random.randn(1_000_000))`
 
 ```{code-cell} ipython3
 # Put your code here
 ```
 
 ```{code-cell} ipython3
-for i in range(12):
-    print("Solution below.")
+for i in range(18):
+    print("Solution below!")
 ```
-
-**Solution**
-
-+++
 
 Here's one solution.
 
@@ -253,7 +327,7 @@ Notice how easy it is to parallelize the loop --- even though `s` is common acro
 
 ```{code-cell} ipython3
 @numba.jit(parallel=True)
-def gini_coefficient(w):
+def gini_numba(w):
     n = len(w)
     s = 0.0
     for i in numba.prange(n):
@@ -262,13 +336,15 @@ def gini_coefficient(w):
     return s / (2 * n * np.sum(w))
 ```
 
+Let's recreate the figure.
+
 ```{code-cell} ipython3
 ginis = []
 
 for σ in σ_vals:
     μ = -σ**2 / 2
     y = np.exp(μ + σ * np.random.randn(n))
-    ginis.append(gini_coefficient(y))
+    ginis.append(gini_numba(y))  # Use Numba version
 
 
 fig, ax = plt.subplots()
@@ -278,3 +354,16 @@ ax.set_ylabel('Gini coefficient', fontsize=12)
 plt.show()
 ```
 
+And let's see if it works on the large data set we considered above.
+
+(Note that it will take a couple of minutes to run!)
+
+```{code-cell} ipython3
+w = np.exp(np.random.randn(1_000_000))
+w.sort()
+gini_numba(w)
+```
+
+```{code-cell} ipython3
+
+```
