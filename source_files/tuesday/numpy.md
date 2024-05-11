@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.1
+    jupytext_version: 1.16.2
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -19,7 +19,13 @@ kernelspec:
 
 +++
 
+[NumPy](https://numpy.org/) is the standard library for numerical array operations in Python.
+
++++
+
 This notebook contains a very quick introduction to NumPy.
+
+(Although the syntax and some reference concepts differ, the basic framework is similar to Matlab.)
 
 We use the following imports
 
@@ -37,12 +43,12 @@ Let's review the basics of NumPy arrays.
 Here are a few ways to create arrays:
 
 ```{code-cell} ipython3
-a = np.array((10.0, 20.0))
+a = np.array((10.0, 20.0))   # Create array from Python tuple
 a
 ```
 
 ```{code-cell} ipython3
-a = np.array((10, 20), dtype='float64')
+a = np.array((10, 20), dtype='float64')  # Specify data type -- must be homogeneous
 a
 ```
 
@@ -58,6 +64,7 @@ a
 
 ```{code-cell} ipython3
 a = np.zeros(3)
+a
 ```
 
 ```{code-cell} ipython3
@@ -168,9 +175,9 @@ For more on broadcasting see [this tutorial](https://jakevdp.github.io/PythonDat
 
 Many NumPy functions can act on either scalars or arrays.
 
-When they act on arrays, they act pointwise.
+When they act on arrays, they act pointwise (element-by-element).
 
-These kinds of functions are called `universal functions` or `ufuncs`.
+These kinds of functions are called **universal functions** or **ufuncs**.
 
 ```{code-cell} ipython3
 np.cos(1.0)
@@ -239,11 +246,17 @@ def f(x):
 %time f(a)
 ```
 
+Moral of the story: Don't use `np.vectorize` unless you have to.
+
+(There are good alternatives, which we will discuss soon.)
+
++++
+
 ### Mutability
 
 +++
 
-NumPy arrays are mutable (can be altered in memory by any name bound to them).
+NumPy arrays are mutable (can be altered in memory).
 
 ```{code-cell} ipython3
 a = np.array((10.0, 20.0))
@@ -266,7 +279,7 @@ a[:] = 42
 a
 ```
 
-Note that any name bound to an array can be used to mutate it.
+**All names** bound to an array have equal rights.
 
 ```{code-cell} ipython3
 a
@@ -337,7 +350,7 @@ The code runs much faster if we use **vectorized** expressions to avoid explicit
 np.sum(np.cos(2 * np.pi / x_vec))
 ```
 
-Now high level overheads are paid per *array* rather than per float or integer.
+Now high level overheads are paid *per array rather than per float*.
 
 +++
 

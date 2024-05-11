@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.1
+    jupytext_version: 1.16.2
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -55,7 +55,9 @@ end = datetime.datetime(2019, 12, 1)
 Now let's read in data on GDP and unemployment from FRED.
 
 ```{code-cell} ipython3
-data = web.DataReader(('GDP', 'UNRATE'), 'fred', start, end)
+series = 'GDP', 'UNRATE'  
+source = 'fred'
+data = web.DataReader(series, source, start, end)
 ```
 
 Data is read in as a `pandas` dataframe.
@@ -165,10 +167,6 @@ ax.set_xlabel('% change in unemployment rate')
 ax.set_ylabel('% change in GDP')
 plt.legend()
 plt.show()
-```
-
-```{code-cell} ipython3
-
 ```
 
 ```{code-cell} ipython3

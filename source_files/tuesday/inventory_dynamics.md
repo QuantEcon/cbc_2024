@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.1
+    jupytext_version: 1.16.2
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -88,7 +88,6 @@ params = Parameters(s=10, S=100, μ=1.0, σ=0.5)
 ```
 
 ```{code-cell} ipython3
-
 
 def update(params, x):
     "Update the state from t to t+1 given current state x."
@@ -223,8 +222,6 @@ plt.show()
 
 Next let’s take a look at how the distribution sequence evolves over time.
 
-We will go back to using ordinary Python `for` loops.
-
 Here is code that repeatedly shifts the cross-section forward while
 recording the cross-section at the dates in `sample_dates`.
 
@@ -334,8 +331,4 @@ def compute_freq(params,
 ```{code-cell} ipython3
 freq = compute_freq(params)
 print(f"Frequency of at least two stock outs = {freq}")
-```
-
-```{code-cell} ipython3
-
 ```
