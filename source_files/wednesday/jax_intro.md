@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.1
+    jupytext_version: 1.16.2
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -88,13 +88,6 @@ Even scalar-valued maps on arrays return JAX arrays.
 jnp.sum(a)
 ```
 
-JAX arrays are also called "device arrays," where term "device" refers to a
-hardware accelerator (GPU or TPU).
-
-(In the terminology of GPUs, the "host" is the machine that launches GPU operations, while the "device" is the GPU itself.)
-
-
-
 Operations on higher dimensional arrays are also similar to NumPy:
 
 ```{code-cell} ipython3
@@ -107,15 +100,6 @@ A @ B
 jnp.linalg.inv(B)   # Inverse of identity is identity
 ```
 
-```{code-cell} ipython3
-result = jnp.linalg.eigh(B)  # Computes eigenvalues and eigenvectors
-result.eigenvalues
-```
-
-```{code-cell} ipython3
-result.eigenvectors
-```
-
 ### Differences
 
 Let's now look at the differences between JAX and NumPy
@@ -123,6 +107,12 @@ Let's now look at the differences between JAX and NumPy
 #### 32 bit floats
 
 One difference between NumPy and JAX is that JAX currently uses 32 bit floats by default.  
+
+```{code-cell} ipython3
+jnp.ones(3)
+```
+
++++ {"jp-MarkdownHeadingCollapsed": true}
 
 This is standard for GPU computing and can lead to significant speed gains with small loss of precision.
 
@@ -169,7 +159,7 @@ a
 ```{code-cell} ipython3
 :tags: [raises-exception]
 
-a[0] = 1   # uncommenting produces a TypeError
+a[0] = 1  
 ```
 
 The designers of JAX chose to make arrays immutable because JAX uses a
@@ -204,14 +194,14 @@ In general it's better to avoid mutating arrays --- more discussion below.
 
 ## Random Numbers
 
-Random numbers are also a bit different in JAX, relative to NumPy.  
+Random numbers are also a bit different in JAX.
 
 
 ### Controlling the state
 
 Typically, in JAX, the state of the random number generator needs to be controlled explicitly.
 
-(This is also related to JAX's functional programming paradigm, discussed below.  JAX does not typically work with objects that maintain state, such as the state of a random number generator.)
+(This is also related to JAX's functional programming paradigm, discussed below.)
 
 ```{code-cell} ipython3
 import jax.random as random
@@ -259,17 +249,18 @@ len(new_keys)
 ```
 
 ```{code-cell} ipython3
-for key in new_keys:
-    print(random.normal(key, (3, )))
+shape = (3, )
+for i, key in enumerate(new_keys):
+    print(f'Draw from key {i} = {random.normal(key, shape)}')
 ```
 
 Another function we can use to update the key is `fold_in`.
 
 ```{code-cell} ipython3
-seed = 1234  # seed to generate new key from old
-key = jax.random.fold_in(key, seed)
+seed = 1234  
+new_key = jax.random.fold_in(key, seed)
 
-random.normal(key, (3, 1))
+random.normal(new_key, (3, 1))
 ```
 
 This is often used in loops -- here's an example that produces `k` (quasi-) independent random `n x n` matrices using this procedure and prints their determinants.
@@ -287,7 +278,9 @@ gen_random_matrices()
 
 ## JIT compilation
 
-The JAX just-in-time (JIT) compiler generates efficient, parallelized machine code optimized for either the CPU or the GPU/TPU, depending on whether one of these accelerators is detected.
+The JAX just-in-time (JIT) compiler generates efficient, parallelized machine code at runtime.
+
+Code is optimized for either the CPU or the GPU/TPU.
 
 ### A first example
 
@@ -312,10 +305,12 @@ How long does the function take to execute?
 %time f(x).block_until_ready()
 ```
 
-(In order to measure actual speed, we use `block_until_ready()` method 
-to hold the interpreter until the results of the computation are returned from
-the device. This is necessary because JAX uses asynchronous dispatch, which
-allows the Python interpreter to run ahead of GPU computations.)
+In order to measure actual speed, we use `block_until_ready()` method 
+to hold the interpreter until the array is returned from
+the device. 
+
+This is necessary because JAX uses asynchronous dispatch, which
+allows the Python interpreter to run ahead of GPU computations.
 
 +++
 
@@ -325,10 +320,6 @@ But if we run it a second time it becomes much faster:
 
 ```{code-cell} ipython3
 %time f(x).block_until_ready()
-```
-
-```{code-cell} ipython3
-%timeit f(x).block_until_ready()
 ```
 
 This is because the built in functions like `jnp.cos` are JIT compiled and the
@@ -454,7 +445,9 @@ def g_jit_2(x):
 
 Because the compiler specializes on array sizes, it needs to recompile code when array sizes change.
 
-As a result, any argument that determines sizes of arrays should be flagged by `static_argnums` -- a signal that JAX can treat that variable as a compile-time constant (and recompile when it changes).
+As a result, any argument that determines sizes of arrays should be flagged by `static_argnums` -- a signal that JAX can treat the argument as fixed and compile efficient code that specializes on this value.
+
+(JAX will recompile the function when it changes).
 
 Here's a example.
 
@@ -504,7 +497,7 @@ In particular, a pure function has
 
 +++
 
-### Examples: Python/NumPy/Numba style code is not pure
+### Examples: Python/NumPy/Numba style code is not generally pure
 
 +++
 
@@ -515,18 +508,28 @@ In particular, a pure function has
 Here's an example to show that NumPy functions are not pure:
 
 ```{code-cell} ipython3
-np.random.randn()
+np.random.randn(2)
 ```
 
 ```{code-cell} ipython3
-np.random.randn()
+np.random.randn(2)
 ```
 
 This function returns the different results when called on the same inputs!
 
 The issue is that the function maintains state between function calls --- the state of the random number generator.
 
-+++
+```{code-cell} ipython3
+np.random.get_state()[2]
+```
+
+```{code-cell} ipython3
+np.random.randn(2)
+```
+
+```{code-cell} ipython3
+np.random.get_state()[2]
+```
 
 #### Example 2
 
@@ -534,7 +537,8 @@ Here's a function that's not pure because it depends on a global
 
 ```{code-cell} ipython3
 a = 10
-def f(x): return a * x
+def f(x): 
+    return a * x
 
 f(1)
 ```
@@ -544,7 +548,7 @@ a = 20
 f(1)
 ```
 
-(Notice that the output of the function cannot be fully predicted from the inputs.)
+Notice that the output of the function cannot be fully predicted from the inputs!
 
 +++
 
@@ -555,56 +559,32 @@ f(1)
 Here's a function that fails to be pure because it modifies external state.
 
 ```{code-cell} ipython3
-def double_input(x):   # Not pure -- side effects
-    x[:] = 2 * x
-    return None
+def change_input(x):   # Not pure -- side effects
+    x[0] = 42
+```
 
+Let's test this with
+
+```{code-cell} ipython3
 x = np.ones(5)
 x
 ```
 
+Here we go
+
 ```{code-cell} ipython3
-double_input(x)
+change_input(x)
+```
+
+Now the global variable `x` is modified:
+
+```{code-cell} ipython3
 x
-```
-
-Here's a pure version:
-
-```{code-cell} ipython3
-def double_input(x):
-    y = 2 * x
-    return y
-```
-
-#### Example 4
-
-+++
-
-The following function is also not pure, since it modifies a global variable (similar to the last example).
-
-```{code-cell} ipython3
-a = 1
-def f():
-    global a
-    a += 1
-    return None
-```
-
-```{code-cell} ipython3
-a
-```
-
-```{code-cell} ipython3
-f()
-```
-
-```{code-cell} ipython3
-a
 ```
 
 ### Compiling impure functions
 
-JAX does not insist on pure functions.
+JAX does *not* insist on pure functions.
 
 For example, JAX will not usually throw errors when compiling impure functions 
 
@@ -746,7 +726,7 @@ for i in range(n):
         z_loops[i, j] = f(x[i], y[j])
 ```
 
-Even for this very small grid, the run time is extremely slow.
+Even for this very small grid, the run time is very slow.
 
 (Notice that we used a NumPy array for `z_loops` because we wanted to write to it.)
 
@@ -846,11 +826,11 @@ y_reshaped = jnp.reshape(y, (1, n))   # Give y another dimension (row)
 When we evaluate $f$ on these reshaped arrays, we replicate the nested for loops in the original version.
 
 ```{code-cell} ipython3
-%time z_reshaped = f(x_reshaped, y_reshaped)
+%time z_reshaped = f(x_reshaped, y_reshaped).block_until_ready()
 ```
 
 ```{code-cell} ipython3
-%time z_reshaped = f(x_reshaped, y_reshaped)
+%time z_reshaped = f(x_reshaped, y_reshaped).block_until_ready()
 ```
 
 Let's check that we got the same result
@@ -902,12 +882,12 @@ With this construction, we can now call the function $f$ on flat (low memory) ar
 
 ```{code-cell} ipython3
 %%time
-z_vmap = f_vec(x, y)
+z_vmap = f_vec(x, y).block_until_ready()
 ```
 
 ```{code-cell} ipython3
 %%time
-z_vmap = f_vec(x, y)
+z_vmap = f_vec(x, y).block_until_ready()
 ```
 
 Let's check we produce the correct answer:
@@ -1041,7 +1021,6 @@ for i in range(12):
 Here is one solution:
 
 ```{code-cell} ipython3
-
 @jax.jit
 def compute_call_price_jax(β=β,
                            μ=μ,

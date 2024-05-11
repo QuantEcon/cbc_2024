@@ -29,14 +29,6 @@ Loosely speaking, this means that the firm
 - waits until inventory falls below some value $ s $  
 - and then restocks with a bulk order of $ S $ units (or, in some models, restocks up to level $ S $).  
 
-
-We will be interested in the distribution of the associated Markov process,
-which can be thought of as cross-sectional distributions of inventory levels
-across a large number of firms, all of which
-
-1. evolve independently and  
-1. have the same dynamics.
-
 This lecture will help use become familiar with NumPy.
 
 (Later we will try similar operations with JAX)
@@ -82,36 +74,46 @@ Here’s a `namedtuple` that stores parameters.
 
 ```{code-cell} ipython3
 Parameters = namedtuple('Parameters', ['s', 'S', 'μ', 'σ'])
-
-# Create a default instance
-params = Parameters(s=10, S=100, μ=1.0, σ=0.5)
 ```
 
+Here's a function that updates from $X_t = x$ to $X_{t+1}$
+
 ```{code-cell} ipython3
-
 def update(params, x):
-    "Update the state from t to t+1 given current state x."
+    """
+    Update the state from t to t+1 given current state x.
+    
+    """
+    s, S, μ, σ = params
     Z = np.random.randn()
-    D = np.exp(params.μ + params.σ * Z)
-    if x <= params.s:
-        return max(params.S - D, 0)
-    else:
-        return max(x - D, 0)
+    D = np.exp(μ + σ * Z)
+    return max(S - D, 0) if x <= s else max(x - D, 0)
+```
 
-def sim_inventory_path(x_init, sim_length):
+Here's a function that generates a time series.
 
+```{code-cell} ipython3
+def sim_inventory_path(x_init, params, sim_length):
+    """
+    Simulate a time series (X_t) with X_0 = x_init.
+
+    """
     X = np.empty(sim_length)
     X[0] = x_init
-
     for t in range(sim_length-1):
         X[t+1] = update(params, X[t])
     return X
+```
 
+Let's test it.
+
+```{code-cell} ipython3
+params = Parameters(s=10, S=100, μ=1.0, σ=0.5)
 s, S = params.s, params.S
 sim_length = 100
 x_init = 50
 
-X = sim_inventory_path(x_init, sim_length)
+X = sim_inventory_path(x_init, params, sim_length)
 
 fig, ax = plt.subplots()
 bbox = (0., 1.02, 1., .102)
@@ -153,19 +155,18 @@ We will then visualize $ \psi_T $ by histogramming the cross-section.
 We will use the following code to update the cross-section of firms by one period.
 
 ```{code-cell} ipython3
-def update_cross_section(params, X_vec, D):
+def update_cross_section(params, X):
     """
-    Update by one period a cross-section of firms with inventory levels given by
-    X_vec, given the vector of demand shocks in D.
-
-       * D[i] is the demand shock for firm i with current inventory X_vec[i]
-
+    Update by one period a cross-section of firms with inventory levels 
+    given by array X.  (Thus, X[i] is the inventory of the i-th firm.)
+    
     """
-    # Unpack
     s, S = params.s, params.S
-    # Restock if the inventory is below the threshold
+    num_firms = len(X)
+    Z = np.random.randn(num_firms)
+    D = np.exp(params.μ + params.σ * Z)
     X_new = np.where(
-        X_vec <= s, np.maximum(S - D, 0), np.maximum(X_vec - D, 0))
+        X <= s, np.maximum(S - D, 0), np.maximum(X - D, 0))
     return X_new
 ```
 
@@ -178,37 +179,34 @@ In the code below, the initial distribution $ \psi_0 $ takes all firms to have
 initial inventory `x_init`.
 
 ```{code-cell} ipython3
-def compute_cross_section(params, x_init, T, num_firms=50_000):
-    # Set up initial distribution
-    X_vec = np.full(num_firms, x_init)
-    # Loop
+def shift_cross_section(params, X, T):
+    """
+    Shift the cross-sectional distribution X = X[i] forward by T periods.
+    
+    """
     for i in range(T):
-        Z = np.random.randn(num_firms)
-        D = np.exp(params.μ + params.σ * Z)
-
-        X_vec = update_cross_section(params, X_vec, D)
-
-    return X_vec
+        X = update_cross_section(params, X)
+    return X
 ```
 
 We’ll use the following specification
 
 ```{code-cell} ipython3
-x_init = 50
+x_init = 50  #  All firms start at this value
+num_firms = 100_000
+X = np.full(num_firms, x_init)
 T = 500
 ```
 
-Let’s look at the timing.
-
 ```{code-cell} ipython3
-X_vec = compute_cross_section(params, x_init, T)
+X = shift_cross_section(params, X, T)
 ```
 
 Here’s a histogram of inventory levels at time $ T $.
 
 ```{code-cell} ipython3
 fig, ax = plt.subplots()
-ax.hist(X_vec, bins=50, 
+ax.hist(X, bins=50, 
         density=True, 
         histtype='step', 
         label=f'cross-section when $t = {T}$')
@@ -225,19 +223,20 @@ Next let’s take a look at how the distribution sequence evolves over time.
 Here is code that repeatedly shifts the cross-section forward while
 recording the cross-section at the dates in `sample_dates`.
 
+All firms start at the same level `x_init`.
+
 ```{code-cell} ipython3
 def shift_forward_and_sample(x_init, params, sample_dates,
-                             num_firms=50_000, sim_length=750):
+                             num_firms=50_000):
 
-    X = np.full((num_firms, ), x_init)
+    X = np.full(num_firms, x_init)
     X_samples = []
+    sim_length = sample_dates[-1] + 1
     # Use for loop to update X and collect samples
     for i in range(sim_length):
         if i in sample_dates:
             X_samples.append(X)
-        Z = np.random.randn(num_firms)
-        D = np.exp(params.μ + params.σ * Z)
-        X = update_cross_section(params, X, D)
+        X = update_cross_section(params, X)
 
     return X_samples
 ```
@@ -247,7 +246,7 @@ Let’s test it
 ```{code-cell} ipython3
 x_init = 50
 num_firms = 10_000
-sample_dates = 10, 50, 250, 500, 750
+sample_dates = 10, 50, 250, 500
 
 X_samples = shift_forward_and_sample(x_init, params, sample_dates)
 ```
@@ -276,59 +275,55 @@ In particular, the sequence of marginal distributions $ \{\psi_t\} $
 converges to a unique limiting distribution that does not depend on
 initial conditions.
 
-Although we will not prove this here, we can see it in the simulation above.
-
-By $ t=500 $ or $ t=750 $ the distributions are barely changing.
+That's why, by $ t=500 $, the distributions are barely changing.
 
 If you test a few different initial conditions, you will see that they do not affect long-run outcomes.
 
 +++
 
-## Restock frequency
+## Exercise: Restock frequency
 
-As an exercise, let’s study the probability that firms need to restock over a given time period.
+Let’s study the probability that firms need to restock at least twice over periods $1, \ldots, 50$ when $ X_0 = 70 $.
 
-In the exercise, we will
+We will do this by Monte Carlo:
 
-- set the starting stock level to $ X_0 = 70 $ and  
-- calculate the proportion of firms that need to order twice or more in the first 50 periods.  
-
+* Set the number of firms to `1_000_000`.
+* Calculate the fraction of firms that need to order twice or more in the first 50 periods.  
 
 This proportion approximates the probability of the event when the sample size
 is large.
 
 ```{code-cell} ipython3
-def update_stock(n_restock, X, params, D):
-    n_restock = np.where(X <= params.s,
-                          n_restock + 1,
-                          n_restock)
-    X = np.where(X <= params.s,
-                  np.maximum(params.S - D, 0),
-                  np.maximum(X - D, 0))
-    return n_restock, X
+# Put your code here
+```
 
+```{code-cell} ipython3
+for i in range(18):
+    print("Solution below!")
+```
+
+```{code-cell} ipython3
 def compute_freq(params,
                  x_init=70,
                  sim_length=50,
                  num_firms=1_000_000):
-
+    s = params.s
     # Prepare initial arrays
-    X = np.full((num_firms, ), x_init)
+    X = np.full(num_firms, x_init)
+    # Restock counter starts at zero
+    counter = np.zeros(num_firms)
 
-    # Stack the restock counter on top of the inventory
-    n_restock = np.zeros((num_firms, ))
-
-    # Use a for loop to perform the calculations on all states
     for i in range(sim_length):
-        Z = np.random.randn(num_firms)
-        D = np.exp(params.μ + params.σ * Z)
-        n_restock, X = update_stock(
-            n_restock, X, params, D)
-
-    return np.mean(n_restock > 1, axis=0)
+        X = update_cross_section(params, X) 
+        counter = np.where(X <= s, counter + 1, counter)
+    return np.mean(counter > 1, axis=0)
 ```
 
 ```{code-cell} ipython3
 freq = compute_freq(params)
 print(f"Frequency of at least two stock outs = {freq}")
+```
+
+```{code-cell} ipython3
+
 ```
