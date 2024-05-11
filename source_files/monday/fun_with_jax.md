@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.1
+    jupytext_version: 1.16.2
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -31,7 +31,7 @@ The aim is just to give a small taste of high performance computing in Python --
 
 We start with some imports
 
-```{code-cell}
+```{code-cell} ipython3
 import numpy as np
 import scipy
 import jax
@@ -41,11 +41,11 @@ import matplotlib.pyplot as plt
 
 Let's check our hardware:
 
-```{code-cell}
+```{code-cell} ipython3
 !nvidia-smi
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 !lscpu -e
 ```
 
@@ -61,14 +61,14 @@ Our transformation will be the cosine function.
 
 Here we evaluate the cosine function at 50 points.
 
-```{code-cell}
+```{code-cell} ipython3
 x = np.linspace(0, 10, 50)
 y = np.cos(x)
 ```
 
 Let's plot.
 
-```{code-cell}
+```{code-cell} ipython3
 fig, ax = plt.subplots()
 ax.scatter(x, y)
 plt.show()
@@ -76,30 +76,30 @@ plt.show()
 
 Our aim is to evaluate the cosine function at many points.
 
-```{code-cell}
+```{code-cell} ipython3
 n = 50_000_000
 x = np.linspace(0, 10, n)
 ```
 
 ### With NumPy
 
-```{code-cell}
+```{code-cell} ipython3
 %time np.cos(x)
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 %time np.cos(x)
 ```
 
 The next line of code frees some memory -- can you explain why?
 
-```{code-cell}
+```{code-cell} ipython3
 x = None  
 ```
 
 ### With JAX
 
-```{code-cell}
+```{code-cell} ipython3
 x_jax = jnp.linspace(0, 10, n)
 ```
 
@@ -107,41 +107,27 @@ Let's run the same operation on JAX
 
 (The `block_until_ready()` method is explained a bit later.)
 
-```{code-cell}
+```{code-cell} ipython3
 %time jnp.cos(x_jax).block_until_ready()
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 %time jnp.cos(x_jax).block_until_ready()
 ```
 
-Can you explain why the timing changes after we change sizes?
-
-```{code-cell}
-x_jax = jnp.linspace(0, 10, n + 1)
-```
-
-```{code-cell}
-%time jnp.cos(x_jax).block_until_ready()
-```
-
-```{code-cell}
-%time jnp.cos(x_jax).block_until_ready()
-```
-
-```{code-cell}
+```{code-cell} ipython3
 x_jax = None  # Free memory
 ```
 
 ## Evaluating a more complicated function
 
-```{code-cell}
+```{code-cell} ipython3
 def f(x):
     y = np.cos(2 * x**2) + np.sqrt(np.abs(x)) + 2 * np.sin(x**4) - 0.1 * x**2
     return y
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 fig, ax = plt.subplots()
 x = np.linspace(0, 10, 100)
 ax.plot(x, f(x))
@@ -155,75 +141,75 @@ Now let's try with a large array.
 
 ### With NumPy
 
-```{code-cell}
+```{code-cell} ipython3
 n = 50_000_000
 x = np.linspace(0, 10, n)
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 %time f(x)
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 %time f(x)
 ```
 
 ### With JAX
 
-```{code-cell}
+```{code-cell} ipython3
 def f(x):
     y = jnp.cos(2 * x**2) + jnp.sqrt(jnp.abs(x)) + 2 * jnp.sin(x**4) - x**2
     return y
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 x_jax = jnp.linspace(0, 10, n)
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 %time f(x_jax).block_until_ready()
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 %time f(x_jax).block_until_ready()
 ```
 
 ### Compiling the Whole Function
 
-```{code-cell}
+```{code-cell} ipython3
 f_jax = jax.jit(f)
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 %time f_jax(x_jax).block_until_ready()
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 %time f_jax(x_jax).block_until_ready()
 ```
 
 ## Solving Linear Systems
 
-```{code-cell}
+```{code-cell} ipython3
 np.random.seed(1234)
 n = 5_000
 A = np.random.randn(n, n)
 b = np.ones(n)
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 %time np.linalg.solve(A, b)
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 A, b = [jax.device_put(v) for v in (A, b)]
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 %time jnp.linalg.solve(A, b).block_until_ready()
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 %time jnp.linalg.solve(A, b).block_until_ready()
 ```
 
@@ -265,7 +251,7 @@ $$
 
 The function below calculates the excess demand for given parameters
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 def e(p, A, b, c):
@@ -292,7 +278,7 @@ A = \begin{pmatrix}
         \end{pmatrix}
 $$
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 A = np.array(((0.5, 0.4),
@@ -305,7 +291,7 @@ Next we plot the two functions $ e_0 $ and $ e_1 $ on a grid of $ (p_0, p_1) $ v
 
 We will use the following function to build the contour plots
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 def plot_excess_demand(ax, good=0, grid_size=100, grid_max=4, surface=True):
@@ -329,7 +315,7 @@ def plot_excess_demand(ax, good=0, grid_size=100, grid_max=4, surface=True):
 
 Here’s our plot of $ e_0 $:
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 fig, ax = plt.subplots()
@@ -339,7 +325,7 @@ plt.show()
 
 Here’s our plot of $ e_1 $:
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 fig, ax = plt.subplots()
@@ -353,7 +339,7 @@ For a price vector $ p $ such that $ e_i(p)=0 $ we know that good $ i $ is in eq
 
 If these two contour lines cross at some price vector $ p^* $, then $ p^* $ is an equilibrium price vector.
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 fig, ax = plt.subplots()
@@ -372,7 +358,7 @@ To solve for $ p^* $ more precisely, we use a zero-finding algorithm from `scipy
 
 We supply $ p = (1, 1) $ as our initial guess.
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 init_p = np.ones(2)
@@ -380,7 +366,7 @@ init_p = np.ones(2)
 
 Now we use a standard hybrid algorithm to find the zero
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 solution = scipy.optimize.root(lambda p: e(p, A, b, c), init_p, method='hybr')
@@ -388,7 +374,7 @@ solution = scipy.optimize.root(lambda p: e(p, A, b, c), init_p, method='hybr')
 
 Here’s the resulting value:
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 p = solution.x
@@ -397,7 +383,7 @@ p
 
 This looks close to our guess from observing the figure. We can plug it back into $ e $ to test that $ e(p) \approx 0 $:
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 np.max(np.abs(e(p, A, b, c)))
@@ -421,7 +407,7 @@ J(p) =
     \end{pmatrix}
 $$
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 def jacobian_e(p, A, b, c):
@@ -437,7 +423,7 @@ def jacobian_e(p, A, b, c):
     return np.array(J)
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 solution = scipy.optimize.root(lambda p: e(p, A, b, c),
@@ -448,7 +434,7 @@ solution = scipy.optimize.root(lambda p: e(p, A, b, c),
 
 Now the solution is even more accurate (although, in this low-dimensional problem, the difference is quite small):
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 p = solution.x
@@ -473,7 +459,7 @@ Iteration starts from initial guess $ p_0 $.
 
 Instead of coding the Jacobian by hand, we use automatic differentiation via `jax.jacobian()`.
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 def newton(f, x_0, tol=1e-5, max_iter=15):
@@ -500,7 +486,7 @@ def newton(f, x_0, tol=1e-5, max_iter=15):
     return x
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 @jax.jit
@@ -508,14 +494,14 @@ def e(p, A, b, c):
     return jnp.exp(- A @ p) + c - b * jnp.sqrt(p)
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 p = newton(lambda p: e(p, A, b, c), init_p)
 p
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 jnp.max(jnp.abs(e(p, A, b, c)))
@@ -527,7 +513,7 @@ Let’s now apply the method just described to investigate a large market with 5
 
 We randomly generate the matrix $ A $ and set the parameter vectors $ b, c $ to $ 1 $.
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 dim = 5_000
@@ -546,7 +532,7 @@ c = jnp.ones(dim)
 
 Here’s our initial condition $ p_0 $
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 init_p = jnp.ones(dim)
@@ -556,7 +542,7 @@ By combining the power of Newton’s method, JAX accelerated linear algebra,
 automatic differentiation, and a GPU, we obtain a relatively small error for
 this high-dimensional problem in just a few seconds:
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 %time p = newton(lambda p: e(p, A, b, c), init_p).block_until_ready()
@@ -564,7 +550,7 @@ this high-dimensional problem in just a few seconds:
 
 Here’s the size of the error:
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 jnp.max(jnp.abs(e(p, A, b, c)))
@@ -572,7 +558,7 @@ jnp.max(jnp.abs(e(p, A, b, c)))
 
 With the same tolerance, SciPy’s `root` function takes much longer to run.
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 %%time
@@ -583,17 +569,9 @@ solution = scipy.optimize.root(lambda p: e(p, A, b, c),
                 tol=1e-5)
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 :hide-output: false
 
 p = solution.x
 jnp.max(jnp.abs(e(p, A, b, c)))
-```
-
-```{code-cell}
-
-```
-
-```{code-cell}
-
 ```
