@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.1
+    jupytext_version: 1.16.2
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 ```
 
-## What is automatic differentiation
+## What is automatic differentiation?
 
 Autodiff is a technique for calculating derivatives on a computer.
 
@@ -36,30 +36,30 @@ Autodiff is a technique for calculating derivatives on a computer.
 The derivative of the exponential function $f(x) = \exp(2x)$ function is
 
 $$
-    (\exp(2 x))' = 2 \exp(2x)
+    f'(x) = 2 \exp(2x)
 $$
 
-so the derivative at 0 is 2.
 
 
-A computer that doesn't know how to take derivatives might approximate this with finite approximation
+A computer that doesn't know how to take derivatives might approximate this with the finite difference ratio
 
 $$
-    f_h(x) := \frac{f(x+h) - f(x)}{h}
-    \quad \text{for some small } h > 0.
+    (Df)(x) := \frac{f(x+h) - f(x)}{h}
 $$
+
+where $h$ is a small positive number.
 
 ```{code-cell} ipython3
 def f(x):
     return np.exp(2 * x)
 
-def fh(x, h=0.1):
+def Df(x, h=0.1):
     return (f(x + h) - f(x))/h
 
 x_grid = np.linspace(-2, 2, 200)
 fig, ax = plt.subplots()
 ax.plot(x_grid, f(x_grid), label="$f$")
-ax.plot(x_grid, f(1.0) + fh(1.0) * (x_grid - 1.0), label="approximation")
+ax.plot(x_grid, f(1.0) + Df(1.0) * (x_grid - 1.0), label="$g(x) = f(1) + (Df)(1)(x - 1)$")
 ax.legend()
 plt.show()
 ```
@@ -95,9 +95,9 @@ closed-form expression representing a derivative.
 This is useful at times but has disadvantages when considering high performance
 computing.
 
-One disadvantage is that it cannot differentiate through control flow, only through mathematical expressions.
+One disadvantage is that symbolic calculus cannot differentiate through control flow, only through mathematical expressions.
 
-Also, using symbolic calculus might involve many redundant calculations.
+Also, using symbolic calculus might involve redundant calculations.
 
 For example, consider
 
@@ -114,14 +114,11 @@ Also, computing $f'(x)$ and $f(x)$ might involve similar terms (e.g., $(\exp(2x)
 
 ### Autodiff 
 
-Autodiff attempts to evaluate expressions numerically (using the rules of
-calculus) at each stage, rather than manipulating large symbolic expressions.
-
 Autodiff produces functions that evaluates derivatives at numerical values
 passed in by the calling code, rather than producing a single symbolic
 expression representing the entire derivative.
 
-Derivatives are deconstructed into component parts via the chain rule.
+Derivatives are constructed by breaking calculations into component parts via the chain rule.
 
 The chain rule is applied until the point where the terms reduce to primitive functions that the program knows how to differentiate exactly (addition, subtraction, exponentiation, sine and cosine, etc.)
 
@@ -136,6 +133,10 @@ Let's start with some real-valued functions on $\mathbb R$.
 +++
 
 ### A differentiable function
+
++++
+
+Let's test JAX's auto diff with a relatively simple function.
 
 ```{code-cell} ipython3
 def f(x):
@@ -169,6 +170,10 @@ plt.show()
 
 ### Absolute value function
 
++++
+
+What happens if the function is not differentiable?
+
 ```{code-cell} ipython3
 def f(x):
     return jnp.abs(x)
@@ -192,17 +197,17 @@ ax.legend()
 plt.show()
 ```
 
-### Differentiating through control flow
+At the nondifferentiable point $0$, `jax.grad` returns the right derivative:
 
 ```{code-cell} ipython3
-def f(x):
-    if x < 0:
-        for i in range(3):
-            x *= x
-    else:
-        x = sum((x**i + i) for i in range(5))
-    return x
+f_prime(0.0)
 ```
+
+### Differentiating through control flow
+
++++
+
+Let's try differentiating through some loops and conditions.
 
 ```{code-cell} ipython3
 def f(x):
@@ -213,31 +218,31 @@ def f(x):
     def f2(x):
         x = sum((x**i + i) for i in range(3))
         return x
-    y = jax.lax.cond(x < 0, f1, f2, x)
+    y = f1(x) if x < 0 else f2(x)
     return y
 ```
 
 ```{code-cell} ipython3
-f_vec = jax.vmap(f)
 f_prime = jax.grad(f)
-f_prime_vec = jax.vmap(f_prime)
 ```
 
 ```{code-cell} ipython3
 x_grid = jnp.linspace(-5, 5, 100)
-f_vals = f_vec(x_grid)
-f_prime_vals = f_prime_vec(x_grid)
 ```
 
 ```{code-cell} ipython3
 fig, ax = plt.subplots()
-ax.plot(x_grid, f_vals, label="$f$")
-ax.plot(x_grid, f_prime_vals, label="$f'$")
+ax.plot(x_grid, [f(x) for x in x_grid], label="$f$")
+ax.plot(x_grid, [f_prime(x) for x in x_grid], label="$f'$")
 ax.legend()
 plt.show()
 ```
 
 ### Differentiating through a linear interpolation
+
++++
+
+We can differentiate through linear interpolation, even though the function is not smooth:
 
 ```{code-cell} ipython3
 def f(x, xp):
@@ -268,51 +273,11 @@ plt.show()
 
 +++
 
-Let's try implementing a simple version of gradient descent.
+Let's try implementing gradient descent.
 
 As a (very contrived) application, we'll use gradient descent to solve for the OLS parameter estimates in simple linear regression.
 
 +++
-
-### Simulated data
-
-Let's generate some simulated data:
-
-```{code-cell} ipython3
-n = 100
-key = jax.random.PRNGKey(1234)
-x = jax.random.uniform(key, (n,))
-
-α, β = 0.5, 1.0  # Set the true intercept and slope.
-key, subkey = jax.random.split(key)
-y = α * x + β + 0.1 * jax.random.normal(subkey, (n,))
-```
-
-```{code-cell} ipython3
-fig, ax = plt.subplots()
-ax.scatter(x, y)
-plt.show()
-```
-
-```{code-cell} ipython3
-mx = x.mean()
-my = y.mean()
-α_hat = jnp.sum((x - mx) * (y - my)) / jnp.sum((x - mx)**2)
-β_hat = my - α_hat * mx
-```
-
-```{code-cell} ipython3
-α_hat, β_hat
-```
-
-```{code-cell} ipython3
-fig, ax = plt.subplots()
-ax.scatter(x, y)
-ax.plot(x, α_hat * x + β_hat, 'k-')
-ax.text(0.1, 1.55, rf'$\hat \alpha = {α_hat:.3}$')
-ax.text(0.1, 1.50, rf'$\hat \beta = {β_hat:.3}$')
-plt.show()
-```
 
 ### A function for gradient descent
 
@@ -343,18 +308,76 @@ def grad_descent(f,       # Function to be minimized
     
 ```
 
+### Simulated data
+
+We're going to test our gradient descent function my minimizing a sum of least squares in a regression problem.
+
+Let's generate some simulated data:
+
+```{code-cell} ipython3
+n = 100
+key = jax.random.PRNGKey(1234)
+x = jax.random.uniform(key, (n,))
+
+α, β = 0.5, 1.0  # Set the true intercept and slope.
+key, subkey = jax.random.split(key)
+y = α * x + β + 0.1 * jax.random.normal(subkey, (n,))
+```
+
+```{code-cell} ipython3
+fig, ax = plt.subplots()
+ax.scatter(x, y)
+plt.show()
+```
+
+Let's start by calculating the estimated slope and intercept using closed form solutions.
+
+```{code-cell} ipython3
+mx = x.mean()
+my = y.mean()
+α_hat = jnp.sum((x - mx) * (y - my)) / jnp.sum((x - mx)**2)
+β_hat = my - α_hat * mx
+```
+
+```{code-cell} ipython3
+α_hat, β_hat
+```
+
+```{code-cell} ipython3
+fig, ax = plt.subplots()
+ax.scatter(x, y)
+ax.plot(x, α_hat * x + β_hat, 'k-')
+ax.text(0.1, 1.55, rf'$\hat \alpha = {α_hat:.3}$')
+ax.text(0.1, 1.50, rf'$\hat \beta = {β_hat:.3}$')
+plt.show()
+```
+
 ### Minimizing squared loss by gradient descent
+
++++
+
+Let's see if we can get the same values with our gradient descent function.
+
+First we set up the least squares loss function.
 
 ```{code-cell} ipython3
 def loss(params, data):
     a, b = params
     x, y = data
     return jnp.sum((y - a * x - b)**2)
+```
 
+Now we minimize it:
+
+```{code-cell} ipython3
 p0 = (1.0, 1.0)
 data = x, y
 α_hat, β_hat = grad_descent(loss, data, p0)
+```
 
+Let's plot the results.
+
+```{code-cell} ipython3
 fig, ax = plt.subplots()
 x_grid = jnp.linspace(0, 1, 100)
 ax.scatter(x, y)
@@ -364,12 +387,30 @@ ax.text(0.1, 1.50, rf'$\hat \beta = {β_hat:.3}$')
 plt.show()
 ```
 
+Notice that we get the same estimates as we did from the closed form solutions.
+
++++
+
+### Adding a squared term
+
++++
+
+Now let's try fitting a second order polynomial.
+
+Here's our new loss function.
+
 ```{code-cell} ipython3
 def loss(params, data):
     a, b, c = params
     x, y = data
     return jnp.sum((y - a * x**2 - b * x - c)**2)
+```
 
+Now we're minimizing in three dimensions.
+
+Let's try it.
+
+```{code-cell} ipython3
 p0 = jnp.ones(3)
 α_hat, β_hat, γ_hat = grad_descent(loss, data, p0)
 
@@ -400,7 +441,7 @@ The (empirical) loss becomes
 
 $$
     \ell(p, x, y) 
-    = \sum_{i=1}^n (y_i = f(x_i; p))^2
+    = \sum_{i=1}^n (y_i - f(x_i, p))^2
 $$
 
 where $f(x_i, p)$ is the polynomial with coefficient vector $p$ evaluated at point $x_i$.
@@ -418,8 +459,8 @@ for i in range(12):
 ```{code-cell} ipython3
 def poly(x, params):
     k = len(params)
-    x_powers = jnp.full(k-1, x)  # x, x^2, x^3, ..., x^{n-1}
-    return params[0] + jnp.cumprod(x_powers) @ params[1:] 
+    x_powers = jnp.cumprod(jnp.full(k-1, x))  # x, x^2, x^3, ..., x^{n-1}
+    return params[0] + x_powers @ params[1:] 
 
 # Vectorize the function in x
 poly = jax.vmap(poly, (0, None))
@@ -429,7 +470,9 @@ poly = jax.vmap(poly, (0, None))
 def loss(params, data):
     x, y = data
     return jnp.sum((y - poly(x, params))**2)
+```
 
+```{code-cell} ipython3
 k = 6
 p0 = jnp.ones(k)
 p_hat = grad_descent(loss, data, p0)
