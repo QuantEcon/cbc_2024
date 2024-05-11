@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.2
+    jupytext_version: 1.16.1
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -40,7 +40,7 @@ from collections import namedtuple
 
 ## Markov dynamics
 
-Before studying Bianchi (2011), we develop some functions for working with the VAR process
+Before studying Bianchi (2011), we develop some functions for working with the bivariate VAR process
 
 $$
    \ln y' = A \ln y + u'   
@@ -59,12 +59,11 @@ We use the following estimated values, reported on p. 12 of [Yamada (2023)](http
 ```{code-cell} ipython3
 A = [[0.2425,   0.3297],
      [-0.1984,  0.7576]]
-A = np.array(A)
-```
 
-```{code-cell} ipython3
 Ω = [[0.0052, 0.002],
      [0.002,  0.0059]]
+
+A, Ω = np.array(A), np.array(Ω)
 ```
 
 We'll store the data in $\Omega$ using its square root:
@@ -72,6 +71,33 @@ We'll store the data in $\Omega$ using its square root:
 ```{code-cell} ipython3
 C = sp.linalg.sqrtm(Ω)
 ```
+
+### Simulating the VAR
+
++++
+
+Here's code for generating the original VAR process, which can be used for
+testing.
+
+```{code-cell} ipython3
+@numba.jit
+def generate_var_process(A=A, C=C, ts_length=1_000_000):
+    """
+    Generate the original VAR process.
+
+    """
+    y_series = np.empty((ts_length, 2))
+    y_series[0, :] = np.zeros(2)
+    for t in range(ts_length-1):
+        y_series[t+1, :] = A @ y_series[t, :] + C @ np.random.randn(2)
+    y_t_series = np.exp(y_series[:, 0])
+    y_n_series = np.exp(y_series[:, 1])
+    return y_t_series, y_n_series
+```
+
+### Discretizing the VAR
+
++++
 
 Here's a function to convert the VAR process to a Markov chain evolving on a
 rectilinear grid of points in $\mathbb R^2$.
@@ -140,26 +166,11 @@ def generate_discrete_var(A=A, C=C, n=4, seed=1234,
     return y_t_series, y_n_series
 ```
 
-Here's code for generating the original VAR process, which can be used for
-testing.
+### Testing the discretization
 
-```{code-cell} ipython3
-@numba.jit
-def generate_var_process(A=A, C=C, ts_length=1_000_000):
-    """
-    Generate the original VAR process.
++++
 
-    """
-    y_series = np.empty((ts_length, 2))
-    y_series[0, :] = np.zeros(2)
-    for t in range(ts_length-1):
-        y_series[t+1, :] = A @ y_series[t, :] + C @ np.random.randn(2)
-    y_t_series = np.exp(y_series[:, 0])
-    y_n_series = np.exp(y_series[:, 1])
-    return y_t_series, y_n_series
-```
-
-Let's check some statistics for both the original and the discretized processes.
+Let's check some statistics for both the original and the discretized processes, to see if they match up.
 
 ```{code-cell} ipython3
 def corr(x, y):
@@ -170,11 +181,11 @@ def corr(x, y):
 
 ```{code-cell} ipython3
 def print_stats(y_t_series, y_n_series):
-    print(f"Std dev of y_t is {y_t_series.std()}")
-    print(f"Std dev of y_n is {y_n_series.std()}")
-    print(f"corr(y_t, y_n) is {corr(y_t_series, y_n_series)}")
-    print(f"auto_corr(y_t) is {corr(y_t_series[:-1], y_t_series[1:])}")
-    print(f"auto_corr(y_n) is {corr(y_n_series[:-1], y_n_series[1:])}")
+    print(f"Std dev of y_t is {y_t_series.std():.3}")
+    print(f"Std dev of y_n is {y_n_series.std():.3}")
+    print(f"corr(y_t, y_n) is {corr(y_t_series, y_n_series):.3}")
+    print(f"auto_corr(y_t) is {corr(y_t_series[:-1], y_t_series[1:]):.3}")
+    print(f"auto_corr(y_n) is {corr(y_n_series[:-1], y_n_series[1:]):.3}")
     print("\n")
 ```
 
@@ -187,9 +198,6 @@ print_stats(*generate_var_process())
 print("Statistics for discretized process.\n")
 print_stats(*generate_discrete_var())
 ```
-
-
-
 
 ## Description of the model
 
@@ -222,11 +230,12 @@ This overborrowing leads to vulnerability vis-a-vis bad shocks.
 ### Decentralized equilibrium
 
 The model contains a representative household that seeks to maximize
-an expected sum of discounted utility where 
+an expected sum of discounted utility with 
 
-* the flow utility function $u$ is CRRA, with $u(c) = c^{1-\sigma}/(1-\sigma)$
-  and
-* $c = (\omega c_t^{-\eta} + (1-\omega) c_n^{-\eta})^{-1/\eta}$
+$$ u(c) = \frac{c^{1-\sigma}}{1-\sigma}
+\quad \text{where} \quad
+c = (\omega c_t^{-\eta} + (1-\omega) c_n^{-\eta})^{-1/\eta}
+$$
 
 Here $c_t$ (resp., $c_n$) is consumption of tradables (resp., nontradables).
 
@@ -240,7 +249,7 @@ $$
 
 where
 
-* $b$ is bond holdings (positive values denote assets)
+* $b$ is bond holdings (positive values denote assets!)
 * primes denote next period values
 * the interest rate $r$ is exogenous
 * $p_n$ is the price of nontradables, while the price of tradables is normalized
@@ -272,10 +281,10 @@ $$B' = H(B, y)$$
 and solves
 
 $$
-    V(b, B, y)
+    v(b, B, y)
     = \max_{c, b'} 
     \left\{
-        u(c) + \beta \mathbb{E}_y v(b', B', y')
+        u(c) + \beta \, \mathbb{E}_y \, v(b', B', y')
     \right\}
 $$
 
@@ -285,7 +294,7 @@ subject to the budget and credit constraints.
 
 Let the solution to the dynamic program be the policy $b'(b, B, y) = $ savings decision in state $(b, B, y)$.
 
-A decentralized equilibrium is a law of motion $H$ such that verifies 
+A **decentralized equilibrium** is a map $H$ such that  
 
 $$
     b'(B, B, y) = H(B, y)
@@ -308,10 +317,10 @@ Using the market clearing conditions, we can write the
 household problem as
 
 $$
-    V(b, B, y)
+    v(b, B, y)
     = \max_{b'} 
     \left\{
-        w((1 + r)  b + y_t - b', y_n) + \beta \mathbb{E}_y v(b', H(B, y), y')
+        w((1 + r)  b + y_t - b', y_n) + \beta \, \mathbb{E}_y \, v(b', H(B, y), y')
     \right\}
 $$
 
@@ -622,8 +631,6 @@ Now we switch to the planner problem.
 
 +++
 
-
-
 The constrained planner solves
 
 $$
@@ -653,7 +660,6 @@ We see that the planner internalizes the impact of the savings choice $b'$ on
 the price of nontradables and hence the credit constraint.
 
 +++
-
 
 Our first function returns the (unmaximized) RHS of the Bellman equation.
 
