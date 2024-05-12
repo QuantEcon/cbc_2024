@@ -356,10 +356,49 @@ int main() {
 \begin{frame}[fragile]
     
     \begin{minted}{zsh}
-ϕ john on gz-precision …/imf_2024 on β main
+ϕ john on gz-precision …/cbc_2024 on β main
 ❯❯ gcc solow.c -o out -lm
 
-ϕ john on gz-precision …/imf_2024 on β main
+ϕ john on gz-precision …/cbc_2024 on β main
+❯❯ ./out 
+
+k = 6.240251
+    \end{minted}
+
+\end{frame}
+
+
+
+\begin{frame}[fragile]
+    
+    \begin{minted}{fortran}
+program main
+ implicit none
+ integer, parameter :: dp=kind(0.d0)                          
+ integer :: n=1000
+ real(dp) :: s=0.3_dp
+ real(dp) :: a=1.0_dp
+ real(dp) :: delta=0.1_dp
+ real(dp) :: alpha=0.4_dp
+ real(dp) :: k=0.2_dp
+ integer :: i
+ do i = 1, n - 1                                                
+  k = a * s * k**alpha + (1 - delta) * k
+ end do
+ print *,'k = ', k
+end program main
+    \end{minted}
+
+\end{frame}
+
+
+\begin{frame}[fragile]
+    
+    \begin{minted}{zsh}
+ϕ john on gz-precision …/cbc_2024 on β main
+❯❯ gfortran solow.f90 -o out 
+
+ϕ john on gz-precision …/cbc_2024 on β main
 ❯❯ ./out 
 
 k = 6.240251
@@ -369,7 +408,7 @@ k = 6.240251
 
 \begin{frame}
 
-    \navy{Pros}
+    \navy{Pros of low-level languages}
 
     \begin{itemize}
         \item fast loops / arithmetic

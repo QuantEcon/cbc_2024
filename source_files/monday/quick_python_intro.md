@@ -23,132 +23,74 @@ kernelspec:
 
 This notebook provides a super quick introduction to Python.
 
-Participants who don't need it can either ask more advanced questions or sleep.
+Participants who don't need it can sleep / check emails / ask questions to keep themselves awake.
 
-Participants who want a slower treatment can either
-
-* slow us down by asking lots of questions, or
-* review the first few [QuantEcon Python programming lectures](https://python-programming.quantecon.org/intro.html) after the class
 
 +++
 
-## Example Task: Plotting a White Noise Process
-
-Task: simulate and plot the white noise
-process $ \epsilon_0, \epsilon_1, \ldots, \epsilon_T $, where each draw $ \epsilon_t $ is independent standard normal.
+## Data types
 
 
-### Version 1
+### Primitive data types
 
-Here are a few lines of code that perform the task we set
+Computer programs typically keep track of a range of data types.
 
-```{code-cell} ipython3
-import numpy as np
-import matplotlib.pyplot as plt   
-
-ϵ_values = np.random.randn(100)   # 100 draws from N(0, 1)
-plt.plot(ϵ_values)                # Plot draws
-plt.show()
-```
-
-Let’s discuss some aspects of this program.
-
-+++
-
-#### Imports
-
-The first two lines
+For example, 
 
 ```{code-cell} ipython3
-import numpy as np
-import matplotlib.pyplot as plt 
-```
-
-import functionality from external code
-libraries.
-
-The first line imports [NumPy](https://python-programming.quantecon.org/numpy.html), a Python package for tasks like
-
-- working with arrays (vectors and matrices)  
-- common mathematical functions like `cos` and `sqrt`  
-- generating random numbers  
-- linear algebra, etc.  
-
-
-After `import numpy as np` we have access to these attributes via the syntax `np.attribute`.
-
-Here’s two more examples
-
-```{code-cell} ipython3
-np.sqrt(4)
+x = 1
+type(x)
 ```
 
 ```{code-cell} ipython3
-np.log(4)
+x = 1.0
+type(x)
 ```
 
-#### Why So Many Imports?
-
-The reason is that the core language is deliberately kept small, so that it’s easy to learn, maintain and improve.
-
-When you want to do something interesting with Python, you almost always need
-to import additional functionality.
-
-+++
-
-#### Importing Names Directly
-
-Recall this code that we saw above
+Another data type is Boolean values, which can be either `True` or `False`
 
 ```{code-cell} ipython3
-import numpy as np
-np.sqrt(4)
+x = True
+type(x)
 ```
 
-Here’s another way to access NumPy’s square root function
+In the next line of code, the interpreter evaluates the expression on the right of = and binds y to this value
 
 ```{code-cell} ipython3
-from numpy import sqrt
-sqrt(4)
+y = 100 < 10
+y
 ```
-
-### A Version with a For Loop
-
-Here’s a (less efficient) version that illustrates `for` loops and Python lists.
 
 ```{code-cell} ipython3
-ts_length = 100
-ϵ_values = []       # Empty list
-
-for i in range(ts_length):
-    e = np.random.randn()
-    ϵ_values.append(e)
-
-plt.plot(ϵ_values)
-plt.show()
+type(y)
 ```
 
-How does it work?
+In arithmetic expressions, `True` is converted to `1` and `False` is converted `0`.
 
-How do you like significant whitespace??
+```{code-cell} ipython3
+x, y
+```
 
-+++
+```{code-cell} ipython3
+x + y
+```
+
+```{code-cell} ipython3
+x * y
+```
+
+### Containers
+
+Python has several native types for storing collections of (possibly heterogeneous) data.
 
 #### Lists
 
-
-Consider the statement `ϵ_values = []`, which creates an empty list.
-
 Lists are a native Python data structure used to group a collection of objects.
-
-Here's another:
 
 ```{code-cell} ipython3
 x = [10, 'foo', False]
 type(x)
 ```
-
-When adding a value to a list, we can use the syntax `list_name.append(some_value)`
 
 ```{code-cell} ipython3
 x.append(2.5)
@@ -156,10 +98,6 @@ x
 ```
 
 Here `append()` is what’s called a **method**, which is a function "attached to" an object -- in this case, the list `x`.
-
-
-- Python objects such as lists, strings, etc. all have methods that are used to manipulate data contained in the object.  
-- String objects have string methods, list objects have list methods, etc.
 
 Another useful list method is `pop()`
 
@@ -187,316 +125,8 @@ x[1]   # Second element of x
 
 Who likes zero based lists/arrays?
 
-+++
+#### Tuples
 
-### While Loops
-
-
-For the purpose of illustration, let’s modify our program to use a `while` loop instead of a `for` loop.
-
-```{code-cell} ipython3
-ts_length = 100
-ϵ_values = []
-i = 0
-while i < ts_length:
-    e = np.random.randn()
-    ϵ_values.append(e)
-    i = i + 1             # Equivalent: i += 1
-plt.plot(ϵ_values)
-plt.show()
-```
-
-How does it work?
-
-+++
-
-**Exercise**
-
-Plot the balance of a bank account over $0, \ldots, T$ when $T=50$.
-
-* There are no withdraws 
-* The initial balance is $ b_0 = 10 $ and the interest rate is $ r = 0.025$.
-
-The balance updates from period $ t $ to $ t+1 $ according to $ b_{t+1} = (1 + r) b_t $.
-
-Your task is to generate and plot the sequence $b_0, b_1, \ldots, b_T $.
-
-You can use a Python list to store this sequence, or a NumPy array.
-
-In the first case, start with 
-
-```{code-cell} ipython3
-T = 50
-b = []
-```
-
-In the second case, you can use a statement such as
-
-```{code-cell} ipython3
-T = 50
-b = np.empty(T+1)   # Allocate memory to store all b_t
-```
-
-and then populate `b` in a for loop.
-
-```{code-cell} ipython3
-for i in range(12):
-    print("Solution below.")
-```
-
-**Solution**
-
-```{code-cell} ipython3
-r = 0.025         # interest rate
-T = 50            # end date
-```
-
-Here's the list-based solution
-
-```{code-cell} ipython3
-b = []
-x = 10         # initial balance
-for t in range(T):
-    b.append(x)
-    x = (1 + r) *x
-b.append(x)
-plt.plot(b, label='bank balance')
-plt.legend()
-plt.show()
-```
-
-And here's the NumPy array-based solution.
-
-```{code-cell} ipython3
-b = np.empty(T+1) # an empty NumPy array, to store all b_t
-b[0] = 10         # initial balance
-for t in range(T):
-    b[t+1] = (1 + r) * b[t]
-
-plt.plot(b, label='bank balance')
-plt.legend()
-plt.show()
-```
-
-**Exercise**
-
-Simulate and plot the correlated time series
-
-$$
-    x_{t+1} = \alpha \, x_t + \epsilon_{t+1}
-    \quad \text{where} \quad
-    x_0 = 0
-    \quad \text{and} \quad t = 0,\ldots,T
-$$
-
-were $ \{\epsilon_t\} $ is IID and standard normal.
-
-In your solution, restrict your import statements to
-
-```{code-cell} ipython3
-import numpy as np
-import matplotlib.pyplot as plt
-```
-
-Set $ T=200 $ and $ \alpha = 0.9 $.
-
-```{code-cell} ipython3
-for i in range(12):
-    print("Solution below.")
-```
-
-**Solution**
-
-
-Here’s one solution.
-
-```{code-cell} ipython3
-α = 0.9
-T = 200
-x = np.empty(T+1)
-x[0] = 0
-
-for t in range(T):
-    x[t+1] = α * x[t] + np.random.randn()
-
-plt.plot(x)
-plt.show()
-```
-
-**Exercise** 
-
-Plot three simulated time series,
-one for each of the cases $ \alpha=0 $, $ \alpha=0.8 $ and $ \alpha=0.98 $.
-
-Use a `for` loop to step through the $ \alpha $ values.
-
-If you can, add a legend, to help distinguish between the three time series.
-
-- If you call the `plot()` function multiple times before calling `show()`, all of the lines you produce will end up on the same figure.  
-- For the legend, noted that suppose `var = 42`, the expression `f'foo{var}'` evaluates to `'foo42'`.
-
-```{code-cell} ipython3
-for i in range(12):
-    print("Solution below.")
-```
-
-**Solution**
-
-```{code-cell} ipython3
-α_values = [0.0, 0.8, 0.98]
-T = 200
-x = np.empty(T+1)
-
-for α in α_values:
-    x[0] = 0
-    for t in range(T):
-        x[t+1] = α * x[t] + np.random.randn()
-    plt.plot(x, label=f'$\\alpha = {α}$')
-
-plt.legend()
-plt.show()
-```
-
-## Conditional execution
-
-One important aspect of essentially all programming languages is branching and
-conditions.
-
-In Python, conditions are usually implemented with if-else syntax.
-
-Here’s an example, that prints -1 for each negative number in an array and 1
-for each nonnegative number
-
-```{code-cell} ipython3
-numbers = [-9, 2.3, -11, 0]
-```
-
-```{code-cell} ipython3
-for x in numbers:
-    if x < 0:
-        print(-1)
-    else:
-        print(1)
-```
-
-**Exercise**
-
-Simulate and plot the correlated time series
-
-$$
-    x_{t+1} = \alpha \, |x_t| + \epsilon_{t+1}
-    \quad \text{where} \quad
-    x_0 = 0
-    \quad \text{and} \quad t = 0,\ldots,T
-$$
-
-were $ \{\epsilon_t\} $ is IID and standard normal.  Use
-
-```{code-cell} ipython3
-α = 0.9
-T = 200
-```
-
-Do not use an existing function such as `abs()` or `np.abs()`
-to compute the absolute value.
-
-Replace this existing function with an if-else condition.
-
-```{code-cell} ipython3
-for i in range(12):
-    print("Solution below.")
-```
-
-**Solution**
-
-Here’s one way:
-
-```{code-cell} ipython3
-x = np.empty(T+1)
-x[0] = 0
-
-for t in range(T):
-    if x[t] < 0:
-        abs_x = - x[t]
-    else:
-        abs_x = x[t]
-    x[t+1] = α * abs_x + np.random.randn()
-
-plt.plot(x)
-plt.show()
-```
-
-Here’s a shorter way to write the same thing:
-
-```{code-cell} ipython3
-α = 0.9
-T = 200
-x = np.empty(T+1)
-x[0] = 0
-
-for t in range(T):
-    abs_x = - x[t] if x[t] < 0 else x[t]
-    x[t+1] = α * abs_x + np.random.randn()
-
-plt.plot(x)
-plt.show()
-```
-
-## Data Types
-
-
-Computer programs typically keep track of a range of data types.
-
-For example, `1.5` is a floating point number, while `1` is an integer.
-
-Another data type is Boolean values, which can be either `True` or `False`
-
-```{code-cell} ipython3
-x = True
-x
-```
-
-We can check the type of any object in memory using the `type()` function.
-
-```{code-cell} ipython3
-type(x)
-```
-
-In the next line of code, the interpreter evaluates the expression on the right of = and binds y to this value
-
-```{code-cell} ipython3
-y = 100 < 10
-y
-```
-
-```{code-cell} ipython3
-type(y)
-```
-
-In arithmetic expressions, `True` is converted to `1` and `False` is converted `0`.
-
-This is called **Boolean arithmetic** and is often useful in programming.
-
-Here are some examples
-
-```{code-cell} ipython3
-x + y
-```
-
-```{code-cell} ipython3
-x * y
-```
-
-```{code-cell} ipython3
-bools = [True, True, False, True]  # List of Boolean values
-sum(bools)
-```
-
-### Containers
-
-Python has several basic types for storing collections of (possibly heterogeneous) data.
-
-We have already discussed lists.
 
 A related data type is **tuples**, which are "immutable" lists
 
@@ -555,20 +185,371 @@ a[1:]
 ```
 
 ```{code-cell} ipython3
-a[1:3]
-```
-
-The rule is `a[m:n]` returns `n - m` elements, starting at `a[m]`.
-
-Also:
-
-```{code-cell} ipython3
 a[-2:]  # Last two elements of the list
 ```
 
 ```{code-cell} ipython3
 s = 'foobar'
 s[-3:]  # Last three elements
+```
+
+## Example task: Solow-Swan dynamics
+
+Task: Generate a time series from the Solow-Swan model
+
+$$ k_{t+1} = s k_t^\alpha + (1-\delta) k_t $$
+
+
+### Version 1
+
+Here are a few lines of code that perform the task we set
+
+```{code-cell} ipython3
+import numpy as np
+import matplotlib.pyplot as plt   
+
+n = 100          # Length of time series
+k = np.empty(n)
+
+α = 0.4
+s = 0.3
+δ = 0.1
+k[0] = 0.2
+
+for t in range(n-1):
+    k[t+1] = s * k[t]**α + (1 - δ) * k[t]
+
+fig, ax = plt.subplots()
+ax.plot(k)                # Plot draws
+ax.set_xlabel("time")
+ax.set_ylabel("capital stock")
+plt.show()
+```
+
+How does Python know that `fig, ax = plt.subplots()` is not inside the loop?
+
+Let’s discuss some aspects of this program.
+
++++
+
+#### Imports
+
+The first two lines
+
+```{code-cell} ipython3
+import numpy as np
+import matplotlib.pyplot as plt 
+```
+
+import functionality from external code libraries.
+
+The first line imports [NumPy](https://python-programming.quantecon.org/numpy.html).
+
+After `import numpy as np` we have access to these attributes via the syntax `np.attribute`.
+
+Here’s two more examples
+
+```{code-cell} ipython3
+np.sqrt(4)
+```
+
+```{code-cell} ipython3
+np.log(4)
+```
+
+#### Why so many imports?
+
+Core Python is deliberately kept small
+
+* easy to learn, maintain, optimize and improve.
+
+Almost all interesting tasks require importing additional functionality.
+
++++
+
+#### Importing names directly
+
+Here’s another way to access NumPy’s square root function
+
+```{code-cell} ipython3
+from numpy import sqrt
+sqrt(4)
+```
+
+Or
+
+```{code-cell} ipython3
+#from numpy import *  # bad!
+```
+
+Why is this bad?
+
+```{code-cell} ipython3
+%whos
+```
+
+### Version 2: using a while loop
+
+
+For the purpose of illustration, let’s modify our program to use a `while` loop instead of a `for` loop.
+
+```{code-cell} ipython3
+
+import numpy as np
+import matplotlib.pyplot as plt   
+
+n = 100          # Length of time series
+k = np.empty(n)
+
+α = 0.4
+s = 0.3
+δ = 0.1
+k[0] = 0.2
+
+t = 0
+while t < n - 1:
+    k[t+1] = s * k[t]**α + (1 - δ) * k[t]
+    t += 1
+
+fig, ax = plt.subplots()
+ax.plot(k)
+plt.show()
+```
+
+#### Exercise
+
+Plot the balance of a bank account over $0, \ldots, T$ when $T=50$.
+
+* There are no withdraws 
+* The initial balance is $ b_0 = 10 $ and the interest rate is $ r = 0.025$.
+
+The balance updates from period $ t $ to $ t+1 $ according to $ b_{t+1} = (1 + r) b_t $.
+
+Your task is to generate and plot the sequence $b_0, b_1, \ldots, b_T $.
+
+You can use a Python list to store this sequence, or a NumPy array.
+
+In the first case, start with
+
+```{code-cell} ipython3
+T = 50
+b = []
+```
+
+In the second case, you can use a statement such as
+
+```{code-cell} ipython3
+T = 50
+b = np.empty(T+1)   # Allocate memory to store all b_t
+```
+
+and then populate `b` in a for loop.
+
+```{code-cell} ipython3
+for i in range(18):
+    print("Solution below. 🐾")
+```
+
+```{code-cell} ipython3
+r = 0.025         # interest rate
+T = 50            # end date
+```
+
+Here's the list-based solution
+
+```{code-cell} ipython3
+b = []
+x = 10         # initial balance
+for t in range(T):
+    b.append(x)
+    x = (1 + r) *x
+b.append(x)
+
+fig, ax = plt.subplots()
+ax.plot(b, label='bank balance')
+ax.legend()
+plt.show()
+```
+
+And here's the NumPy array-based solution.
+
+```{code-cell} ipython3
+b = np.empty(T+1) # an empty NumPy array, to store all b_t
+b[0] = 10         # initial balance
+for t in range(T):
+    b[t+1] = (1 + r) * b[t]
+
+fig, ax = plt.subplots()
+ax.plot(b, label='bank balance')
+ax.legend()
+plt.show()
+```
+
+#### Exercise
+
+Simulate and plot the correlated time series
+
+$$
+    x_{t+1} = \alpha \, x_t + \epsilon_{t+1}
+    \quad \text{where} \quad
+    x_0 = 0
+    \quad \text{and} \quad t = 0,\ldots,T
+$$
+
+were $ \{\epsilon_t\} $ is IID and standard normal.
+
+In your solution, restrict your import statements to
+
+```{code-cell} ipython3
+import numpy as np
+import matplotlib.pyplot as plt
+```
+
+Set $ T=200 $ and $ \alpha = 0.9 $.
+
+```{code-cell} ipython3
+for i in range(18):
+    print("Solution below. 🐾")
+```
+
+**Solution**
+
+
+Here’s one solution.
+
+```{code-cell} ipython3
+α = 0.9
+T = 200
+x = np.empty(T+1)
+x[0] = 0
+
+for t in range(T):
+    x[t+1] = α * x[t] + np.random.randn()
+
+fig, ax = plt.subplots()
+ax.plot(x)
+plt.show()
+```
+
+### Exercise
+
+Plot three simulated time series,
+one for each of the cases $ \alpha=0 $, $ \alpha=0.8 $ and $ \alpha=0.98 $.
+
+Use a `for` loop to step through the $ \alpha $ values.
+
+If you can, add a legend, to help distinguish between the three time series.
+
+- If you call the `plot()` function multiple times before calling `show()`, all of the lines you produce will end up on the same figure.  
+- For the legend, noted that suppose `var = 42`, the expression `f'foo{var}'` evaluates to `'foo42'`.
+
+```{code-cell} ipython3
+for i in range(18):
+    print("Solution below. 🐾")
+```
+
+**Solution**
+
+```{code-cell} ipython3
+α_values = [0.0, 0.8, 0.98]
+T = 200
+x = np.empty(T+1)
+
+fig, ax = plt.subplots()
+
+for α in α_values:
+    x[0] = 0
+    for t in range(T):
+        x[t+1] = α * x[t] + np.random.randn()
+    ax.plot(x, label=f'$\\alpha = {α}$')
+
+ax.legend()
+plt.show()
+```
+
+## Conditional execution
+
+One important aspect of essentially all programming languages is branching and
+conditions.
+
+In Python, conditions are usually implemented with if-else syntax.
+
+Here’s an example, that prints -1 for each negative number in an array and 1
+for each nonnegative number
+
+```{code-cell} ipython3
+numbers = [-9, 2.3, -11, 0]
+```
+
+```{code-cell} ipython3
+for x in numbers:
+    if x < 0:
+        print(-1)
+    else:
+        print(1)
+```
+
+**Exercise**
+
+Simulate and plot the correlated time series
+
+$$
+    x_{t+1} = \alpha \, |x_t| + \epsilon_{t+1}
+    \quad \text{where} \quad
+    x_0 = 0
+    \quad \text{and} \quad t = 0,\ldots,T
+$$
+
+were $ \{\epsilon_t\} $ is IID and standard normal.  Use
+
+```{code-cell} ipython3
+α = 0.9
+T = 200
+```
+
+Do not use an existing function such as `abs()` or `np.abs()`
+to compute the absolute value.
+
+Replace this existing function with an if-else condition.
+
+```{code-cell} ipython3
+for i in range(18):
+    print("Solution below. 🐾")
+```
+
+**Solution**
+
+Here’s one way:
+
+```{code-cell} ipython3
+x = np.empty(T+1)
+x[0] = 0
+
+for t in range(T):
+    if x[t] < 0:
+        abs_x = - x[t]
+    else:
+        abs_x = x[t]
+    x[t+1] = α * abs_x + np.random.randn()
+
+plt.plot(x)
+plt.show()
+```
+
+Here’s a shorter way to write the same thing:
+
+```{code-cell} ipython3
+α = 0.9
+T = 200
+x = np.empty(T+1)
+x[0] = 0
+
+for t in range(T):
+    abs_x = - x[t] if x[t] < 0 else x[t]
+    x[t+1] = α * abs_x + np.random.randn()
+
+plt.plot(x)
+plt.show()
 ```
 
 ## Iterating
@@ -603,13 +584,12 @@ Suppose that we want to make the information more readable, by capitalizing name
 The program below reads the data in and makes the conversion:
 
 ```{code-cell} ipython3
-data_file = open('us_cities.txt', 'r')
-for line in data_file:
-    city, population = line.split(':')         # Tuple unpacking
-    city = city.title()                        # Capitalize city names
-    population = f'{int(population):,}'        # Add commas to numbers
-    print(city.ljust(15) + population)
-data_file.close()
+with open('us_cities.txt', 'r') as data_file:
+    for line in data_file:
+        city, population = line.split(':')         # Tuple unpacking
+        city = city.title()                        # Capitalize city names
+        population = f'{int(population):,}'        # Add commas to numbers
+        print(city.ljust(15) + population)
 ```
 
 ### Looping without Indices
@@ -674,7 +654,7 @@ range(8)
 ```
 
 ```{code-cell} ipython3
-doubles = [2 * x for x in range(8)]
+doubles = [2 * x for x in range(8) if x % 2 == 0]
 doubles
 ```
 
@@ -728,86 +708,6 @@ These are the standard logical connectives (conjunction, disjunction and denial)
 not not True
 ```
 
-### Coding Style and Documentation
-
-A consistent coding style make code easier to understand and maintain.
-
-You can find Python programming philosophy by typing `import this` at the prompt.
-
-See also the Python style guide [PEP8](https://www.python.org/dev/peps/pep-0008/).
-
-+++
-
-**Exercise**
-
-Part 1: Given two numeric lists or tuples `x_vals` and `y_vals` of equal length, compute
-their inner product using `zip()`.
-
-Part 2: In one line, count the number of even numbers in 0,…,99.
-
-
-(Hint: `x % 2` returns 0 if `x` is even, 1 otherwise.)
-
-Part 3: Given `pairs = ((2, 5), (4, 2), (9, 8), (12, 10))`, count the number of pairs `(a, b)`
-such that both `a` and `b` are even.
-
-```{code-cell} ipython3
-for i in range(12):
-    print("Solution below.")
-```
-
-**Part 1 Solution:**
-
-Here’s one possible solution
-
-```{code-cell} ipython3
-x_vals = [1, 2, 3]
-y_vals = [1, 1, 1]
-sum([x * y for x, y in zip(x_vals, y_vals)])
-```
-
-This also works
-
-```{code-cell} ipython3
-sum(x * y for x, y in zip(x_vals, y_vals))
-```
-
-**Part 2 Solution:**
-
-One solution is
-
-```{code-cell} ipython3
-sum([x % 2 == 0 for x in range(100)])
-```
-
-This also works:
-
-```{code-cell} ipython3
-sum(x % 2 == 0 for x in range(100))
-```
-
-Some less natural alternatives that nonetheless help to illustrate the
-flexibility of list comprehensions are
-
-```{code-cell} ipython3
-len([x for x in range(100) if x % 2 == 0])
-```
-
-and
-
-```{code-cell} ipython3
-sum([1 for x in range(100) if x % 2 == 0])
-```
-
-**Part 3 Solution:**
-
-Here’s one possibility
-
-```{code-cell} ipython3
-pairs = ((2, 5), (4, 2), (9, 8), (12, 10))
-sum([x % 2 == 0 and y % 2 == 0 for x, y in pairs])
-```
-
 ## Defining Functions
 
 ### Basic Syntax
@@ -859,41 +759,6 @@ Functions without a return statement automatically return the special Python obj
 
 +++
 
-**Exercise**
-
-Write a function that takes a string as an argument and returns the number of capital letters in the string.
-
-(Hint:`'foo'.upper()` returns `'FOO'`.)
-
-```{code-cell} ipython3
-for i in range(12):
-    print("Solution below.")
-```
-
-**Solution:**
-
-Here’s one solution:
-
-```{code-cell} ipython3
-def count_upper_case(string):
-    count = 0
-    for letter in string:
-        if letter == letter.upper() and letter.isalpha():
-            count += 1
-    return count
-
-count_upper_case('The Rain in Spain')
-```
-
-Alternatively,
-
-```{code-cell} ipython3
-def count_upper_case(s):
-    return sum([c.isupper() for c in s])
-
-count_upper_case('The Rain in Spain')
-```
-
 ### Keyword Arguments
 
 
@@ -915,16 +780,6 @@ They can be modified as follows
 ```{code-cell} ipython3
 f(2, a=4, b=5)
 ```
-
-### The Flexibility of Python Functions
-
-
-- Any number of functions can be defined in a given file.  
-- Functions can be (and often are) defined inside other functions.  
-- Any object can be passed to a function as an argument, including other functions.  
-- A function can return any kind of object, including functions.
-
-+++
 
 ### One-Line Functions: `lambda`
 
@@ -951,84 +806,15 @@ from scipy.integrate import quad
 quad(lambda x: x**3, 0, 2)
 ```
 
-### Random Draws
+## Coding Style and Documentation
 
-Consider again the code
+A consistent coding style make code easier to understand and maintain.
 
-```{code-cell} ipython3
-ts_length = 100
-ϵ_values = []   # empty list
+You can find Python programming philosophy by typing `import this` at the prompt.
 
-for i in range(ts_length):
-    e = np.random.randn()
-    ϵ_values.append(e)
+See also the Python style guide [PEP8](https://www.python.org/dev/peps/pep-0008/).
 
-plt.plot(ϵ_values)
-plt.show()
-```
-
-We can break this down as follows:
-
-```{code-cell} ipython3
-def generate_data(n):
-    ϵ_values = []
-    for i in range(n):
-        e = np.random.randn()
-        ϵ_values.append(e)
-    return ϵ_values
-
-data = generate_data(100)
-plt.plot(data)
-plt.show()
-```
-
-Here's an alternative where we pass a function to a function:
-
-```{code-cell} ipython3
-def generate_data(n, generator_type):
-    ϵ_values = []
-    for i in range(n):
-        e = generator_type()
-        ϵ_values.append(e)
-    return ϵ_values
-
-data = generate_data(100, np.random.uniform)
-plt.plot(data)
-plt.show()
-```
-
-**Exercise**
-
-The binomial random variable $Y$ gives the number of successes in $ n $ binary trials, where each trial
-succeeds with probability $ p $.
-
-Without any import besides `from numpy.random import uniform`, write a function
-`binomial_rv` such that `binomial_rv(n, p)` generates one draw of $ Y $.
-
-Hint: If $ U $ is uniform on $ (0, 1) $ and $ p \in (0,1) $, then the expression `U < p` evaluates to `True` with probability $ p $.
-
-```{code-cell} ipython3
-for i in range(12):
-    print("Solution below.")
-```
-
-**Solution** 
-
-Here's one solution:
-
-```{code-cell} ipython3
-from numpy.random import uniform
-
-def binomial_rv(n, p):
-    count = 0
-    for i in range(n):
-        U = uniform()
-        if U < p:
-            count = count + 1    # Or count += 1
-    return count
-
-binomial_rv(10, 0.5)
-```
++++
 
 ## OOP: Objects and Methods
 
@@ -1039,8 +825,6 @@ The traditional programming paradigm (Fortran, C, MATLAB, etc.) is called **proc
 Another important paradigm is **object-oriented programming** (OOP) 
 
 In the OOP paradigm, data and functions are bundled together into “objects” — and functions in this context are referred to as **methods**.
-
-Methods are called on to transform the data contained in the object.
 
 - Think of a Python list that contains data and has methods such as `append()` and `pop()` that transform the data.  
 
@@ -1054,6 +838,8 @@ Python is a pragmatic language that blends object-oriented, functional and proce
 But at a foundational level, Python *is* object-oriented.
 
 By this we mean that, in Python, *everything is an object*.
+
+
 
 
 ### Objects
@@ -1122,6 +908,13 @@ The identity of an object can be obtained via the `id()` function
 ```{code-cell} ipython3
 y = 2.5
 z = 2.5
+```
+
+```{code-cell} ipython3
+y == z
+```
+
+```{code-cell} ipython3
 id(y)
 ```
 
@@ -1168,30 +961,32 @@ x.imag
 x.__class__
 ```
 
-When Python creates this integer object, it stores with it various auxiliary information, such as the imaginary part, and the type.
+```{code-cell} ipython3
+x.__doc__
+```
+
+
 
 Any name following a dot is called an *attribute* of the object to the left of the dot.
 
 - e.g.,`imag` and `__class__` are attributes of `x`.  
 
-
-We see from this example that objects have attributes that contain auxiliary information.
-
-They also have attributes that act like functions, called *methods*.
-
-These attributes are important, so let’s discuss them in-depth.
-
 +++
 
 ### Methods
 
-
-Methods are *functions that are bundled with objects*.
-
-Formally, methods are attributes of objects that are **callable** – i.e., attributes that can be called as functions
+Methods are attributes of objects that are **callable** – i.e., attributes that can be called as functions
 
 ```{code-cell} ipython3
 x = ['foo', 'bar']
+x.append('fish')   #  append is a list method
+```
+
+```{code-cell} ipython3
+x
+```
+
+```{code-cell} ipython3
 callable(x.append)
 ```
 
@@ -1200,12 +995,6 @@ callable(x.__doc__)
 ```
 
 Methods typically act on the data contained in the object they belong to, or combine that data with other data
-
-```{code-cell} ipython3
-x = ['a', 'b']
-x.append('c')
-x
-```
 
 ```{code-cell} ipython3
 s = 'This is a string'
@@ -1244,7 +1033,7 @@ x
 
 +++
 
-## Inspection Using Rich
+### Inspection Using Rich
 
 There’s a nice package called [rich](https://github.com/Textualize/rich) that
 helps us view the contents of an object.
@@ -1273,14 +1062,15 @@ In fact there are still more methods, as you can see if you execute `inspect(10,
 
 ## Names and Namespaces
 
-### Variable Names in Python
 
+
+
+
+### Variable Names in Python
 
 Consider the Python statement
 
 ```{code-cell} ipython3
-:hide-output: false
-
 x = 42
 ```
 
@@ -1291,8 +1081,6 @@ Under the hood, this process of binding names to objects is implemented as a dic
 There is no problem binding two or more names to the one object, regardless of what that object is
 
 ```{code-cell} ipython3
-:hide-output: false
-
 def f(string):      # Create a function called f
     print(string)   # that prints any string it's passed
 
@@ -1301,8 +1089,6 @@ id(g) == id(f)
 ```
 
 ```{code-cell} ipython3
-:hide-output: false
-
 g('test')
 ```
 
@@ -1311,10 +1097,11 @@ What happens when the number of names bound to an object goes to zero?
 Here’s an example of this situation, where the name `x` is first bound to one object and then **rebound** to another
 
 ```{code-cell} ipython3
-:hide-output: false
-
 x = 'foo'
 id(x)
+```
+
+```{code-cell} ipython3
 x = 'bar'  
 id(x)
 ```
@@ -1333,8 +1120,6 @@ In other words, the memory slot that stores that object is deallocated and retur
 Recall from the preceding discussion that the statement
 
 ```{code-cell} ipython3
-:hide-output: false
-
 x = 42
 ```
 
@@ -1346,15 +1131,13 @@ This dictionary is called a namespace.
 
 +++
 
-Python uses multiple namespaces, creating them on the fly as necessary.
+Python uses multiple namespaces, creating them as necessary.
 
 For example, every time we import a module, Python creates a namespace for that module.
 
 To see this in action, suppose we write a script `mathfoo.py` with a single line
 
 ```{code-cell} ipython3
-:hide-output: false
-
 %%file mathfoo.py
 pi = 'foobar'
 ```
@@ -1362,86 +1145,45 @@ pi = 'foobar'
 Let's import this "module"
 
 ```{code-cell} ipython3
-:hide-output: false
-
 import mathfoo
 ```
 
 Next let’s import the `math` module from the standard library
 
 ```{code-cell} ipython3
-:hide-output: false
-
 import math
 ```
 
 Both of these modules have an attribute called `pi`
 
 ```{code-cell} ipython3
-:hide-output: false
-
 math.pi
 ```
 
 ```{code-cell} ipython3
-:hide-output: false
-
 mathfoo.pi
 ```
 
 These two different bindings of `pi` exist in different namespaces, each one implemented as a dictionary.
 
-If you wish, you can look at the dictionary directly, using `module_name.__dict__`.
-
 ```{code-cell} ipython3
-:hide-output: false
-
-import math
-
-math.__dict__.items()
+dir(mathfoo)
 ```
 
-As you know, we access elements of the namespace using the dotted attribute notation
+```{code-cell} ipython3
+dir(math)
+```
+
+Note that
 
 ```{code-cell} ipython3
-:hide-output: false
-
 math.pi
 ```
 
-This is entirely equivalent to `math.__dict__['pi']`
+is entirely equivalent to `math.__dict__['pi']`
 
 ```{code-cell} ipython3
-:hide-output: false
-
 math.__dict__['pi'] 
-```
-
-Another way to view the namespace of `math` is
-
-```{code-cell} ipython3
-:hide-output: false
-
-vars(math)
-```
-
-Notice the special names `__doc__` and `__name__`.
-
-These are initialized in the namespace when any module is imported
-
-- `__doc__` is the doc string of the module  
-- `__name__` is the name of the module
-
-```{code-cell} ipython3
-:hide-output: false
-
-print(math.__doc__)
-```
-
-```{code-cell} ipython3
-:hide-output: false
-
-math.__name__
 ```
 
 ### Interactive Sessions
@@ -1456,65 +1198,18 @@ These are also regarded as being executed within a module — in this case, a mo
 To check this, we can look at the current module name via the value of `__name__` given at the prompt
 
 ```{code-cell} ipython3
-:hide-output: false
-
 print(__name__)
 ```
 
-When we run a script using IPython’s `run` command, the contents of the file are executed as part of `__main__` too.
-
-To see this, let’s create a file `mod.py` that prints its own `__name__` attribute
+To see all variables in `__main__` you can use
 
 ```{code-cell} ipython3
-:hide-output: false
-
-%%file mod.py
-print(__name__)
-```
-
-Now let’s look at two different ways of running it in IPython
-
-```{code-cell} ipython3
-:hide-output: false
-
-import mod  # Standard import
-```
-
-```{code-cell} ipython3
-:hide-output: false
-
-%run mod.py  # Run interactively
-```
-
-In the second case, the code is executed as part of `__main__`, so `__name__` is equal to `__main__`.
-
-To see the contents of the namespace of `__main__` we use `vars()` rather than `vars(__main__)`.
-
-If you do this in IPython, you will see a whole lot of variables that IPython
-needs, and has initialized when you started up your session.
-
-If you prefer to see only the variables you have initialized, use `%whos`
-
-```{code-cell} ipython3
-:hide-output: false
-
-x = 2
-y = 3
-
-import numpy as np
-
 %whos
 ```
 
 ### Global and local namespaces
 
 The **global namespace** is *the namespace of the module currently being executed*.
-
-For example, suppose that we start the interpreter and begin making assignments.
-
-We are now working in the module `__main__`, and hence the namespace for `__main__` is the global namespace.
-
-+++
 
 When we call a function, the interpreter creates a **local namespace** for that function, and registers the variables in that namespace.
 
@@ -1527,8 +1222,6 @@ While the function is executing, we can view the contents of the local namespace
 For example, consider
 
 ```{code-cell} ipython3
-:hide-output: false
-
 def f(x):
     a = 2
     print(locals())
@@ -1538,8 +1231,6 @@ def f(x):
 Now let’s call the function
 
 ```{code-cell} ipython3
-:hide-output: false
-
 f(1)
 ```
 
@@ -1554,31 +1245,23 @@ How does access to these names work?
 - They have their own namespace called `__builtins__`.
 
 ```{code-cell} ipython3
-:hide-output: false
-
 # Show the first 10 names in `__builtins__`
-dir(__builtins__)[0:10]
+dir(__builtins__)[:10]
 ```
 
 We can access elements of the namespace as follows
 
 ```{code-cell} ipython3
-:hide-output: false
-
 __builtins__.max
 ```
 
 But `__builtins__` is special, because we can always access them directly as well
 
 ```{code-cell} ipython3
-:hide-output: false
-
 max
 ```
 
 ```{code-cell} ipython3
-:hide-output: false
-
 __builtins__.max == max
 ```
 
@@ -1586,7 +1269,7 @@ The next section explains how this works …
 
 +++
 
-## Name Resolution
+### Name resolution
 
 
 Namespaces are great because they help us organize variable names.
@@ -1613,8 +1296,6 @@ If the interpreter is executing a function, then the directly accessible namespa
 Sometimes functions are defined within other functions, like so
 
 ```{code-cell} ipython3
-:hide-output: false
-
 def f():
     a = 2
     def g():
@@ -1644,13 +1325,9 @@ This is called the **LEGB rule** (local, enclosing, global, builtin).
 
 ### Mutable Versus Immutable Parameters
 
-This is a good time to say a little more about mutable vs immutable objects.
-
 Consider the code segment
 
 ```{code-cell} ipython3
-:hide-output: false
-
 def f(x):
     x = x + 1
     return x
@@ -1672,8 +1349,6 @@ None of this affects the global `x`.
 However, it’s a different story when we use a **mutable** data type such as a list
 
 ```{code-cell} ipython3
-:hide-output: false
-
 def f(x):
     x[0] = x[0] + 1
     return x
@@ -1694,6 +1369,145 @@ Here’s what happens
  
 Global `x` is now bound to the mutated list `[2]`
 
-```{code-cell} ipython3
++++
 
+## More Exercises
+
+### Exercise
+
+Part 1: Given two numeric lists or tuples `x_vals` and `y_vals` of equal length, compute
+their inner product using `zip()`.
+
+Part 2: In one line, count the number of even numbers in 0,…,99.
+
+
+(Hint: `x % 2` returns 0 if `x` is even, 1 otherwise.)
+
+Part 3: Given `pairs = ((2, 5), (4, 2), (9, 8), (12, 10))`, count the number of pairs `(a, b)`
+such that both `a` and `b` are even.
+
+```{code-cell} ipython3
+for i in range(18):
+    print("Solution below.")
+```
+
+**Part 1 Solution:**
+
+Here’s one possible solution
+
+```{code-cell} ipython3
+x_vals = [1, 2, 3]
+y_vals = [1, 1, 1]
+sum([x * y for x, y in zip(x_vals, y_vals)])
+```
+
+This also works
+
+```{code-cell} ipython3
+sum(x * y for x, y in zip(x_vals, y_vals))
+```
+
+**Part 2 Solution:**
+
+One solution is
+
+```{code-cell} ipython3
+sum([x % 2 == 0 for x in range(100)])
+```
+
+This also works:
+
+```{code-cell} ipython3
+sum(x % 2 == 0 for x in range(100))
+```
+
+Some less natural alternatives that nonetheless help to illustrate the
+flexibility of list comprehensions are
+
+```{code-cell} ipython3
+len([x for x in range(100) if x % 2 == 0])
+```
+
+and
+
+```{code-cell} ipython3
+sum([1 for x in range(100) if x % 2 == 0])
+```
+
+**Part 3 Solution:**
+
+Here’s one possibility
+
+```{code-cell} ipython3
+pairs = ((2, 5), (4, 2), (9, 8), (12, 10))
+sum([x % 2 == 0 and y % 2 == 0 for x, y in pairs])
+```
+
+### Exercise
+
+
+Write a function that takes a string as an argument and returns the number of capital letters in the string.
+
+(Hint:`'foo'.upper()` returns `'FOO'`.)
+
+```{code-cell} ipython3
+for i in range(18):
+    print("Solution below.")
+```
+
+**Solution:**
+
+Here’s one solution:
+
+```{code-cell} ipython3
+def count_upper_case(string):
+    count = 0
+    for letter in string:
+        if letter == letter.upper() and letter.isalpha():
+            count += 1
+    return count
+
+count_upper_case('The Rain in Spain')
+```
+
+Alternatively,
+
+```{code-cell} ipython3
+def count_upper_case(s):
+    return sum([c.isupper() for c in s])
+
+count_upper_case('The Rain in Spain')
+```
+
+### Exercise
+
+The binomial random variable $Y$ gives the number of successes in $ n $ binary trials, where each trial
+succeeds with probability $ p $.
+
+Without any import besides `from numpy.random import uniform`, write a function
+`binomial_rv` such that `binomial_rv(n, p)` generates one draw of $ Y $.
+
+Hint: If $ U $ is uniform on $ (0, 1) $ and $ p \in (0,1) $, then the expression `U < p` evaluates to `True` with probability $ p $.
+
+```{code-cell} ipython3
+for i in range(12):
+    print("Solution below.")
+```
+
+**Solution** 
+
+Here's one solution:
+
+```{code-cell} ipython3
+from numpy.random import uniform
+
+def binomial_rv(n, p):
+    count = 0
+    for i in range(n):
+        U = uniform()
+        if U < p:
+            count = count + 1    # Or count += 1
+    return count
+
+binomial_rv(10, 0.5)
 ```

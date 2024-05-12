@@ -11,5 +11,5 @@ program main
  do i = 1, n - 1                                                
   k = a * s * k**alpha + (1 - delta) * k
  end do
- print *,'Capital stock = ', k
+ print *,'k = ', k
 end program main
