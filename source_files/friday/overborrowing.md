@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.1
+    jupytext_version: 1.16.2
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -50,7 +50,6 @@ where
 
 * prime indicates next period value
 * $y = (y_t, y_n) = $ output of (tradables, nontradables)
-* $A$ is $2 \times 2$
 * $u' \sim N(0, \Omega)$ and $\Omega$ is positive definite
 * the log function is applied pointwise
 
