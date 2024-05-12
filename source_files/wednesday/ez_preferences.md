@@ -56,6 +56,12 @@ import quantecon as qe
 jax.config.update("jax_enable_x64", True)
 ```
 
+Looking for a GPU:
+
+```{code-cell} ipython3
+!nvidia-smi
+```
+
 ## Model
 
 
@@ -101,7 +107,7 @@ We suppose $C_t = c(X_t)$ where $X_t$ is a Markov process taking values in state
 space $S$.
 
 We guess the solution has the form $V_t = v(X_t)$ for all $t$, where $v$ is some
-function over the state space $S$.
+function over $S$.
 
 In this case we can write the above equation as
 
@@ -113,13 +119,14 @@ $$
 
 Let's suppose that $(X_t)$ is a Markov chain with transition matrix $P$.
 
-Then the last equation tells us that we need to solve for $v$ in
+It suffices to find a $v \colon S \to \mathbb R$ such that
 
 $$
     v(x) 
     = \left\{
-        c(X_t)^\rho + \beta \left[\sum_{x'} v(x')^\gamma P(x, x')\right]^{\rho/\gamma} 
+        c(x)^\rho + \beta \left[\sum_{x'} v(x')^\gamma P(x, x')\right]^{\rho/\gamma} 
       \right\}^{1/\rho}
+    \qquad (x \in S)
 $$
 
 
@@ -128,7 +135,7 @@ We define the operator $K$ sending $v$ into $Kv$ by
 $$
     (Kv)(x) 
     = \left\{
-        c(X_t)^\rho + \beta \left[\sum_{x'} v(x')^\gamma P(x, x')\right]^{\rho/\gamma} 
+        c(x)^\rho + \beta \left[\sum_{x'} v(x')^\gamma P(x, x')\right]^{\rho/\gamma} 
       \right\}^{1/\rho}
 $$
 
@@ -189,7 +196,6 @@ def newton_solver(K, v_init, max_iter=10_000, tol=1e-8):
     """
     F = lambda v: K(v) - v
     @jax.jit
-
     def Q(v):
         J = jax.jacobian(F) 
         return v - jnp.linalg.solve(J(v), F(v))
@@ -219,7 +225,7 @@ Here's the model.
 Model = namedtuple('Model', ('ρ', 'γ', 'β', 'α', 'σ', 'x_vals', 'c_vals', 'P'))
 
 def create_ez_model(ρ=1.6,
-                    γ=-12.0,
+                    γ=-2.0,
                     α=0.9,
                     β=0.998,
                     σ=0.1,
@@ -265,7 +271,7 @@ print(f"Execution time = {newton_time:.5} seconds.")
 ```
 
 ```{code-cell} ipython3
-print(f"Newton time / succ. approx. time = {newton_time / sa_time}")
+print(f"Successive approx time / Newton time = {sa_time / newton_time}")
 ```
 
 ```{code-cell} ipython3
@@ -282,6 +288,8 @@ Step $\sigma$ through `0.05, 0.075, 0.1, 0.125`, in each case computing the solu
 
 How does increasing volatility affect lifetime utility?
 
+(You might find that lifetime utility goes up with $\sigma$, even though the agent is risk-averse ($\gamma < 0$).  Can you explain this?)
+
 ```{code-cell} ipython3
 # Put your code here.
 ```
@@ -297,7 +305,7 @@ sig_vals = 0.05, 0.075, 0.1, 0.125
 
 fig, ax = plt.subplots()
 for σ in sig_vals:
-    model= create_ez_model(σ=σ)
+    model= create_ez_model(σ=σ, γ=0.5)
     v, _ = newton_solver(lambda v: K(v, model), v_init)
     v_init = v
     ax.plot(x_vals, v, label=f"$\sigma = {σ:.4}$")

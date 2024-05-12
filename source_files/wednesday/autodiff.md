@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.2
+    jupytext_version: 1.16.1
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -25,6 +25,12 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
+```
+
+Checking for a GPU:
+
+```{code-cell} ipython3
+!nvidia-smi
 ```
 
 ## What is automatic differentiation?
@@ -51,34 +57,45 @@ where $h$ is a small positive number.
 
 ```{code-cell} ipython3
 def f(x):
+    "Original function."
     return np.exp(2 * x)
 
+def f_prime(x):
+    "True derivative."
+    return 2 * np.exp(2 * x)
+
 def Df(x, h=0.1):
+    "Approximate derivative (finite difference)."
     return (f(x + h) - f(x))/h
 
-x_grid = np.linspace(-2, 2, 200)
+x_grid = np.linspace(-2, 1, 200)
 fig, ax = plt.subplots()
-ax.plot(x_grid, f(x_grid), label="$f$")
-ax.plot(x_grid, f(1.0) + Df(1.0) * (x_grid - 1.0), label="$g(x) = f(1) + (Df)(1)(x - 1)$")
+ax.plot(x_grid, f_prime(x_grid), label="$f'$")
+ax.plot(x_grid, Df(x_grid), label="$Df$")
 ax.legend()
 plt.show()
 ```
 
 This kind of numerical derivative is often inaccurate and unstable.
 
-One reason is that in the calculation of
+One reason is that 
 
 $$
-    \frac{f(x+h) - f(x)}{h} 
+    \frac{f(x+h) - f(x)}{h} \approx \frac{0}{0}
 $$
 
-we often have very small numbers in the numerator and denominator, which causes rounding errors.
+Small numbers in the numerator and denominator causes rounding errors.
 
-The situation is exponentially worse in high dimensions, working with higher order derivatives
+The situation is exponentially worse in high dimensions / with higher order derivatives
 
 +++
 
-### Autodiff is not symbolic algebra
+### Autodiff is not symbolic calculus
+
++++
+
+Symbolic calculus tries to use rules for differentiation to produce a single
+closed-form expression representing a derivative.
 
 ```{code-cell} ipython3
 from sympy import symbols, diff, init_printing
@@ -89,10 +106,7 @@ expr = (a*x + b)**m
 expr.diff((x, 6))  # 6-th order derivative
 ```
 
-Symbolic calculus tries to use rules for differentiation to produce a single
-closed-form expression representing a derivative.
-
-This is useful at times but has disadvantages when considering high performance
+Symbolic calculus is not well suited to high performance
 computing.
 
 One disadvantage is that symbolic calculus cannot differentiate through control flow, only through mathematical expressions.
@@ -141,29 +155,24 @@ Let's test JAX's auto diff with a relatively simple function.
 ```{code-cell} ipython3
 def f(x):
     return jnp.sin(x) - 2 * jnp.cos(3 * x) * jnp.exp(- x**2)
+```
 
+We use `grad` to compute the gradient of a real-valued function:
+
+```{code-cell} ipython3
+f_prime = jax.grad(f)
+```
+
+Let's plot the result:
+
+```{code-cell} ipython3
 x_grid = jnp.linspace(-5, 5, 100)
 ```
 
 ```{code-cell} ipython3
-f_prime = jax.grad(f)
-f_prime_vec = jax.vmap(f_prime)
-```
-
-```{code-cell} ipython3
-f_vals = f(x_grid)
-f_prime_vals = f_prime_vec(x_grid)
-```
-
-```{code-cell} ipython3
-f_vals = f(x_grid)
-f_prime_vals = f_prime_vec(x_grid)
-```
-
-```{code-cell} ipython3
 fig, ax = plt.subplots()
-ax.plot(x_grid, f_vals, label="$f$")
-ax.plot(x_grid, f_prime_vals, label="$f'$")
+ax.plot(x_grid, [f(x) for x in x_grid], label="$f$")
+ax.plot(x_grid, [f_prime(x) for x in x_grid], label="$f'$")
 ax.legend()
 plt.show()
 ```
@@ -181,18 +190,12 @@ def f(x):
 
 ```{code-cell} ipython3
 f_prime = jax.grad(f)
-f_prime_vec = jax.vmap(f_prime)
-```
-
-```{code-cell} ipython3
-f_vals = f(x_grid)
-f_prime_vals = f_prime_vec(x_grid)
 ```
 
 ```{code-cell} ipython3
 fig, ax = plt.subplots()
-ax.plot(x_grid, f_vals, label="$f$")
-ax.plot(x_grid, f_prime_vals, label="$f'$")
+ax.plot(x_grid, [f(x) for x in x_grid], label="$f$")
+ax.plot(x_grid, [f_prime(x) for x in x_grid], label="$f'$")
 ax.legend()
 plt.show()
 ```
@@ -245,27 +248,26 @@ plt.show()
 We can differentiate through linear interpolation, even though the function is not smooth:
 
 ```{code-cell} ipython3
-def f(x, xp):
-    yp = jnp.cos(2 * xp)
-    return jnp.interp(x, xp, yp)
+n = 20
+xp = jnp.linspace(-5, 5, n)
+yp = jnp.cos(2 * xp)
 
-xp = jnp.linspace(-5, 5, 25)
-```
-
-```{code-cell} ipython3
 fig, ax = plt.subplots()
-ax.plot(x_grid, f(x_grid, xp))
+ax.plot(x_grid, jnp.interp(x_grid, xp, yp))
 plt.show()
 ```
 
 ```{code-cell} ipython3
-f_prime = jax.grad(f)
-f_prime_vec = jax.vmap(f_prime, (0, None))
+f_prime = jax.grad(jnp.interp)
+```
+
+```{code-cell} ipython3
+f_prime_vec = jax.vmap(f_prime, in_axes=(0, None, None))
 ```
 
 ```{code-cell} ipython3
 fig, ax = plt.subplots()
-ax.plot(x_grid, f_prime_vec(x_grid, xp))
+ax.plot(x_grid, f_prime_vec(x_grid, xp, yp))
 plt.show()
 ```
 
@@ -275,36 +277,46 @@ plt.show()
 
 Let's try implementing gradient descent.
 
-As a (very contrived) application, we'll use gradient descent to solve for the OLS parameter estimates in simple linear regression.
+As a simple application, we'll use gradient descent to solve for the OLS parameter estimates in simple linear regression.
 
 +++
 
 ### A function for gradient descent
 
++++
+
+Here's an implementation of gradient descent.
+
 ```{code-cell} ipython3
 def grad_descent(f,       # Function to be minimized
                  args,    # Extra arguments to the function
-                 p0,      # Initial condition
+                 x0,      # Initial condition
                  λ=0.1,   # Initial learning rate
                  tol=1e-5, 
                  max_iter=1_000):
+    """
+    Minimize the function f via gradient descent, starting from guess x0.
+
+    The learning rate is computed according to the Barzilai-Borwein method.
+    
+    """
     
     f_grad = jax.grad(f)
-    p = jnp.array(p0)
-    df = f_grad(p, args)
+    x = jnp.array(x0)
+    df = f_grad(x, args)
     ϵ = tol + 1
     i = 0
     while ϵ > tol and i < max_iter:
-        new_p = p - λ * df
-        new_df = f_grad(new_p, args)
-        Δp = new_p - p
+        new_x = x - λ * df
+        new_df = f_grad(new_x, args)
+        Δx = new_x - x
         Δdf = new_df - df
-        λ = jnp.abs(Δp @ Δdf) / (Δdf @ Δdf)
-        ϵ = jnp.max(jnp.abs(Δp))
-        p, df = new_p, new_df
+        λ = jnp.abs(Δx @ Δdf) / (Δdf @ Δdf)
+        ϵ = jnp.max(jnp.abs(Δx))
+        x, df = new_x, new_df
         i += 1
         
-    return p
+    return x
     
 ```
 
@@ -319,9 +331,11 @@ n = 100
 key = jax.random.PRNGKey(1234)
 x = jax.random.uniform(key, (n,))
 
-α, β = 0.5, 1.0  # Set the true intercept and slope.
+α, β, σ = 0.5, 1.0, 0.1  # Set the true intercept and slope.
 key, subkey = jax.random.split(key)
-y = α * x + β + 0.1 * jax.random.normal(subkey, (n,))
+ϵ = jax.random.normal(subkey, (n,))
+
+y = α * x + β + σ * ϵ
 ```
 
 ```{code-cell} ipython3
@@ -361,6 +375,7 @@ Let's see if we can get the same values with our gradient descent function.
 First we set up the least squares loss function.
 
 ```{code-cell} ipython3
+@jax.jit
 def loss(params, data):
     a, b = params
     x, y = data
@@ -370,7 +385,7 @@ def loss(params, data):
 Now we minimize it:
 
 ```{code-cell} ipython3
-p0 = (1.0, 1.0)
+p0 = jnp.zeros(2)  # Initial guess for α, β
 data = x, y
 α_hat, β_hat = grad_descent(loss, data, p0)
 ```
@@ -400,6 +415,7 @@ Now let's try fitting a second order polynomial.
 Here's our new loss function.
 
 ```{code-cell} ipython3
+@jax.jit
 def loss(params, data):
     a, b, c = params
     x, y = data
@@ -411,7 +427,7 @@ Now we're minimizing in three dimensions.
 Let's try it.
 
 ```{code-cell} ipython3
-p0 = jnp.ones(3)
+p0 = jnp.zeros(3)
 α_hat, β_hat, γ_hat = grad_descent(loss, data, p0)
 
 fig, ax = plt.subplots()
@@ -424,57 +440,42 @@ plt.show()
 
 ## Exercise
 
-Write a function called `poly` that with signature `poly(x, params)` that
-computes the value of a polynomial at $x \in \mathbb R$.
+The function `jnp.polyval` evaluates polynomials.  
 
-The array `params` is the vector of polynomial coefficients.
-
-For example, if `params = p0, p1, p2`, then the function returns
+For example, if `len(p)` is 3, then `jnp.polyval(p, x)`  returns
 
 $$
-    p_0 + p_1 x + p_2 x^2
+    f(p, x) := p_0 x^2 + p_1 x + p_2
 $$
 
-Once you have this function working, use it for polynomial regression.
+Use this function for polynomial regression.
 
 The (empirical) loss becomes
 
 $$
     \ell(p, x, y) 
-    = \sum_{i=1}^n (y_i - f(x_i, p))^2
+    = \sum_{i=1}^n (y_i - f(p, x_i))^2
 $$
 
-where $f(x_i, p)$ is the polynomial with coefficient vector $p$ evaluated at point $x_i$.
-
-Set $k=6$ and set the initial guess of `params` to `jnp.ones(k)`.
+Set $k=4$ and set the initial guess of `params` to `jnp.zeros(k)`.
 
 Use gradient descent to find the array `params` that minimizes the loss
-function.
+function and plot the result (following the examples above).
 
 ```{code-cell} ipython3
-for i in range(12):
-    print("Solution below 🙈🦀")
-```
-
-```{code-cell} ipython3
-def poly(x, params):
-    k = len(params)
-    x_powers = jnp.cumprod(jnp.full(k-1, x))  # x, x^2, x^3, ..., x^{n-1}
-    return params[0] + x_powers @ params[1:] 
-
-# Vectorize the function in x
-poly = jax.vmap(poly, (0, None))
+for i in range(18):
+    print("Solution below 🦀")
 ```
 
 ```{code-cell} ipython3
 def loss(params, data):
     x, y = data
-    return jnp.sum((y - poly(x, params))**2)
+    return jnp.sum((y - jnp.polyval(params, x))**2)
 ```
 
 ```{code-cell} ipython3
-k = 6
-p0 = jnp.ones(k)
+k = 4
+p0 = jnp.zeros(k)
 p_hat = grad_descent(loss, data, p0)
 print('Estimated parameter vector:')
 print(p_hat)
@@ -482,12 +483,8 @@ print('\n\n')
 
 fig, ax = plt.subplots()
 ax.scatter(x, y)
-ax.plot(x_grid, poly(x_grid, p_hat), 'k-', alpha=0.6)
+ax.plot(x_grid, jnp.polyval(p_hat, x_grid), 'k-', alpha=0.6)
 plt.show()
-```
-
-```{code-cell} ipython3
-
 ```
 
 ```{code-cell} ipython3

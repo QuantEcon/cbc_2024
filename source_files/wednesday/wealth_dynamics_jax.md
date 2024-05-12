@@ -19,6 +19,8 @@ kernelspec:
 
 #### Prepared for the CBC Workshop (May 2024)
 
+-----
+
 In this lecture we examine wealth dynamics in large cross-section of agents who
 are subject to both 
 
@@ -60,9 +62,9 @@ from time import time
 
 Wealth evolves as follows:
 
-```{math}
-    w_{t+1} = (1 + r_{t+1}) s(w_t) + y_{t+1}
-```
+$$
+w_{t+1} = (1 + r_{t+1}) s(w_t) + y_{t+1}
+$$
 
 Here
 
@@ -94,15 +96,11 @@ $$
 
 The tuple $\{ (\epsilon_t, \xi_t, \zeta_t) \}$ is IID and standard normal in $\mathbb R^3$.
 
-(Each household receives their own idiosyncratic shocks.)
-
 Regarding the savings function $s$, our default model will be
 
-```{math}
-:label: sav_ah
-
+$$
 s(w) = s_0 w \cdot \mathbb 1\{w \geq \hat w\}
-```
+$$
 
 where $s_0$ is a positive constant.
 
@@ -294,10 +292,6 @@ start_time = time()
 ψ_star = update_cross_section(model, ψ_0, z_sequence)
 numba_time = time() - start_time
 print(f"Generated cross-section in {numba_time} seconds.\n")
-```
-
-```{code-cell} ipython3
-
 ```
 
 ## Wealth dynamics using JAX

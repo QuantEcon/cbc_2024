@@ -43,6 +43,12 @@ from collections import namedtuple
 jax.config.update("jax_enable_x64", True)
 ```
 
+Let's check our GPU status:
+
+```{code-cell} ipython3
+!nvidia-smi
+```
+
 ## Model
 
 We study an elementary model where 
@@ -53,14 +59,19 @@ We study an elementary model where
 * the horizon is infinite
 * an unemployment agent discounts the future via discount factor $\beta \in (0,1)$
 
-The wage process obeys
+### Set up
+
+The wage offer process obeys
 
 $$
-    W_{t+1} = \rho W_t + \nu Z_{t+1},
-    \qquad \{Z_t\} \text{ is IID and } N(0, 1)
+    W_{t+1} = \rho W_t + \nu Z_{t+1}
 $$
 
-We discretize this using Tauchen's method to produce a stochastic matrix $P$
+where $(Z_t)_{t \geq 0}$ is IID and standard normal.
+
+We discretize this wage process using Tauchen's method to produce a stochastic matrix $P$
+
+### Rewards
 
 Since jobs are permanent, the return to accepting wage offer $w$ today is
 
@@ -79,6 +90,7 @@ $$
 
 We solve this model using value function iteration.
 
++++
 
 ## Code
 
@@ -100,8 +112,7 @@ def create_js_model(
     ):
     "Creates an instance of the job search model with Markov wages."
     mc = qe.tauchen(n, ρ, ν)
-    w_vals, P = jnp.exp(mc.state_values), mc.P
-    P = jnp.array(P)
+    w_vals, P = jnp.exp(mc.state_values), jnp.array(mc.P)
     return Model(n, w_vals, P, β, c)
 ```
 
@@ -120,7 +131,7 @@ model.β
 ```
 
 ```{code-cell} ipython3
-model.w_vals.mean()   # mean wage offer
+model.w_vals.mean()  
 ```
 
 Here's the Bellman operator.
@@ -159,8 +170,8 @@ $$
 
 Here $\mathbf 1$ is an indicator function.
 
-The statement above means that the worker accepts ($\sigma(w) = 1$) when the value of stopping
-is higher than the value of continuing.
+* $\sigma(w) = 1$ means stop
+* $\sigma(w) = 0$ means continue.
 
 ```{code-cell} ipython3
 @jax.jit
@@ -206,9 +217,7 @@ Let's set up and solve the model.
 model = create_js_model()
 n, w_vals, P, β, c = model
 
-qe.tic()
 v_star, σ_star = vfi(model)
-vfi_time = qe.toc()
 ```
 
 Here's the optimal policy:
@@ -245,7 +254,6 @@ ax.set_xlabel("$w$", fontsize=12)
 plt.show()
 ```
 
-
 ## Exercise
 
 In the setting above, the agent is risk-neutral vis-a-vis future utility risk.
@@ -267,7 +275,7 @@ $$
 $$
 
 
-When $\theta < 0$ the agent is risk sensitive.
+When $\theta < 0$ the agent is risk averse.
 
 Solve the model when $\theta = -0.1$ and compare your result to the risk neutral
 case.
@@ -356,12 +364,9 @@ def vfi(model, max_iter=10_000, tol=1e-4):
 
 
 model_rs = create_risk_sensitive_js_model()
-
 n, w_vals, P, β, c, θ = model_rs
 
-qe.tic()
 v_star_rs, σ_star_rs = vfi(model_rs)
-vfi_time = qe.toc()
 ```
 
 Let's plot the results together with the original risk neutral case and see what we get.
@@ -373,12 +378,13 @@ res_wage_rs = w_vals[res_wage_index]
 ```
 
 ```{code-cell} ipython3
-
 fig, ax = plt.subplots()
 ax.plot(w_vals, v_star,  alpha=0.8, label="risk neutral $v$")
 ax.plot(w_vals, v_star_rs, alpha=0.8, label="risk sensitive $v$")
-ax.vlines((res_wage,), 150, 400,  ls='--', color='darkblue', alpha=0.5, label=r"risk neutral $\bar w$")
-ax.vlines((res_wage_rs,), 150, 400, ls='--', color='orange', alpha=0.5, label=r"risk sensitive $\bar w$")
+ax.vlines((res_wage,), 100, 400,  ls='--', color='darkblue', 
+          alpha=0.5, label=r"risk neutral $\bar w$")
+ax.vlines((res_wage_rs,), 100, 400, ls='--', color='orange', 
+          alpha=0.5, label=r"risk sensitive $\bar w$")
 ax.legend(frameon=False, fontsize=12, loc="lower right")
 ax.set_xlabel("$w$", fontsize=12)
 plt.show()

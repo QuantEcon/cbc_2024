@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.2
+    jupytext_version: 1.16.1
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -32,6 +32,8 @@ We also studied this model in an earlier notebook using NumPy.
 
 Here we study the same problem using JAX.
 
+One issue we will consider is whether or not we can improve execution speed by using JAX's `fori_loop` function (as a replacement for looping in Python).
+
 We will use the following imports:
 
 ```{code-cell} ipython3
@@ -57,6 +59,8 @@ Here’s a description of our GPU:
 
 We briefly recall the dynamics.
 
+Let $a \vee b = \max\{a, b\}$
+
 Consider a firm with inventory $ X_t $.
 
 The firm waits until $ X_t \leq s $ and then restocks up to $ S $ units.
@@ -67,8 +71,8 @@ firms.
 $$
 X_{t+1} =
     \begin{cases}
-      \max\{ S - D_{t+1},  0\} & \quad \text{if } X_t \leq s \\
-      \max\{ X_t - D_{t+1}, 0\} &  \quad \text{if } X_t > s
+      (S - D_{t+1}) \vee  0 & \quad \text{if } X_t \leq s \\
+      (X_t - D_{t+1}) \vee 0 &  \quad \text{if } X_t > s
     \end{cases}
 $$
 
@@ -86,7 +90,7 @@ Here’s a `namedtuple` that stores parameters.
 ```{code-cell} ipython3
 :hide-output: false
 
-Parameters = namedtuple('Parameters', ['s', 'S', 'μ', 'σ'])
+Parameters = namedtuple('Parameters', ('s', 'S', 'μ', 'σ'))
 
 # Create a default instance
 params = Parameters(s=10, S=100, μ=1.0, σ=0.5)
@@ -94,25 +98,9 @@ params = Parameters(s=10, S=100, μ=1.0, σ=0.5)
 
 ## Cross-sectional distributions
 
-Let’s look at the marginal distribution $ \psi_T $ of $ X_T $ for some fixed $ T $.
+Let's simulate the inventories of a cross-section of firms.
 
-The probability distribution $ \psi_T $ is the time $ T $ distribution of firm
-inventory levels implied by the model.
-
-We will approximate this distribution by
-
-1. fixing $ n $ to be some large number, indicating the number of firms in the
-  simulation,  
-1. fixing $ T $, the time period we are interested in,  
-1. generating $ n $ independent draws from some fixed distribution $ \psi_0 $ that gives the
-  initial cross-section of inventories for the $ n $ firms, and  
-1. shifting this distribution forward in time $ T $ periods, updating each firm
-  $ T $ times via the dynamics described above (independent of other firms).  
-
-
-We will then visualize $ \psi_T $ by histogramming the cross-section.
-
-We will use the following code to update the cross-section of firms by one period.
+We will use the following code to update the cross-section by one period.
 
 ```{code-cell} ipython3
 :hide-output: false
@@ -120,10 +108,11 @@ We will use the following code to update the cross-section of firms by one perio
 @jax.jit
 def update_cross_section(params, X_vec, D):
     """
-    Update by one period a cross-section of firms with inventory levels given by
+    Update by one period a cross-section of firms with inventory levels 
     X_vec, given the vector of demand shocks in D.
 
-       * D[i] is the demand shock for firm i with current inventory X_vec[i]
+       * X_vec[i] is the inventory of firm i
+       * D[i] is the demand shock for firm i 
 
     """
     # Unpack
@@ -202,7 +191,7 @@ fig, ax = plt.subplots()
 ax.hist(X_vec, bins=50, 
         density=True, 
         histtype='step', 
-        label=f'cross-section when $t = {T}$')
+        label=f'cross-section when $T = {T}$')
 ax.set_xlabel('inventory')
 ax.set_ylabel('probability')
 ax.legend()
@@ -222,12 +211,11 @@ We will do this using `jax.jit` and a `fori_loop`, which is a compiler-ready ver
 def compute_cross_section_fori(params, x_init, T, key, num_firms=50_000):
 
     s, S, μ, σ = params.s, params.S, params.μ, params.σ
-    X = jnp.full((num_firms, ), x_init)
 
     # Define the function for each update
-    def fori_update(t, inputs):
+    def fori_update(t, state):
         # Unpack
-        X, key = inputs
+        X, key = state
         # Draw shocks using key
         Z = random.normal(key, shape=(num_firms,))
         D = jnp.exp(μ + σ * Z)
@@ -237,11 +225,13 @@ def compute_cross_section_fori(params, x_init, T, key, num_firms=50_000):
                   jnp.maximum(X - D, 0))
         # Refresh the key
         key = random.fold_in(key, t)
-        return X, key
+        new_state = X, key
+        return new_state
 
     # Loop t from 0 to T, applying fori_update each time.
-    # The initial condition for fori_update is (X, key).
-    X, key = lax.fori_loop(0, T, fori_update, (X, key))
+    X = jnp.full((num_firms, ), x_init)
+    initial_state = X, key
+    X, key = lax.fori_loop(0, T, fori_update, initial_state)
 
     return X
 
@@ -280,7 +270,7 @@ fig, ax = plt.subplots()
 ax.hist(X_vec, bins=50, 
         density=True, 
         histtype='step', 
-        label=f'cross-section when $t = {T}$')
+        label=f'cross-section when $T = {T}$')
 ax.set_xlabel('inventory')
 ax.set_ylabel('probability')
 ax.legend()
@@ -370,12 +360,11 @@ We start with an easier `for` loop implementation
 # Define a jitted function for each update
 @jax.jit
 def update_stock(params, counter, X, D):
-    X = jnp.where(X <= params.s,
-                  jnp.maximum(params.S - D, 0),
+    s, S = params.s, params.S
+    X = jnp.where(X <= s,
+                  jnp.maximum(S - D, 0),
                   jnp.maximum(X - D, 0))
-    counter = jnp.where(X <= params.s,
-                          counter + 1,
-                          counter)
+    counter = jnp.where(X <= s, counter + 1, counter)
     return counter, X
 
 def compute_freq(params, key,
@@ -401,6 +390,18 @@ def compute_freq(params, key,
 :hide-output: false
 
 key = random.PRNGKey(42)
+```
+
+```{code-cell} ipython3
+:hide-output: false
+
+%time freq = compute_freq(params, key).block_until_ready()
+print(f"Frequency of at least two stock outs = {freq}")
+```
+
+```{code-cell} ipython3
+:hide-output: false
+
 %time freq = compute_freq(params, key).block_until_ready()
 print(f"Frequency of at least two stock outs = {freq}")
 ```
@@ -414,7 +415,7 @@ speed while generating a similar answer.
 
 ### Solution to[ Exercise 4.1](https://jax.quantecon.org/#inventory_dynamics_ex1)
 
-Here is a `lax.fori_loop` version that JIT compiles the whole function
+Here is a `fori_loop` version that JIT compiles the whole function
 
 ```{code-cell} ipython3
 :hide-output: false
@@ -436,9 +437,7 @@ def compute_freq_fori_loop(params,
         X = jnp.where(X <= s,
                       jnp.maximum(S - D[t, :], 0),
                       jnp.maximum(X - D[t, :], 0))
-        counter = jnp.where(X <= s,
-                                counter + 1,
-                                counter)
+        counter = jnp.where(X <= s, counter + 1, counter)
         return X, counter
 
     X = jnp.full((num_firms, ), x_init)
