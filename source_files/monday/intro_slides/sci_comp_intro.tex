@@ -729,6 +729,33 @@ solow(0.2)
 
 
 \begin{frame}
+    \frametitle{Types of parallelization}
+
+    \navy{Multithreading}: multiple threads with shared memory
+
+    \begin{itemize}
+        \item inverting a matrix in Matlab / NumPy using MKL
+        \item graphics calculations on a GPU
+    \end{itemize}
+
+    \navy{Multiprocessing}: multiple processes with individual memory
+
+    \begin{itemize}
+        \item using a cluster 
+        \item splitting calculations across multiple GPUs
+    \end{itemize}
+
+    Comments
+
+    \begin{itemize}
+        \item Multithreading is faster with lower overheads -- our focus
+        \item Multiprocessing can be used on top of multithreading (training ChatGPT, etc.)
+    \end{itemize}
+
+\end{frame}
+
+
+\begin{frame}
 
     Parallelization is the big game changer powering the AI revolution   
 

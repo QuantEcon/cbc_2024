@@ -307,7 +307,7 @@
         \vspace{0.5em}
         \item Tensorflow? 
         \vspace{0.5em}
-        \item Mojo?
+        \item Mojo (by Modular)?
     \end{itemize}
 
 \end{frame}
@@ -476,14 +476,14 @@
 import jax.numpy as jnp
 from jax import grad, jit
 
-def f(params, x):
-  for W, b in params:
-    y = W @ x + b
-    x = jnp.tanh(y)  
-  return y                
+def f(θ, x):
+  for W, b in θ:
+    w = W @ x + b
+    x = jnp.tanh(w)  
+  return x
 
-def loss(params, x, y):
-  return jnp.sum((f(params, x) - y)**2)
+def loss(θ, x, y):
+  return jnp.sum((y - f(θ, x))**2)
 
 grad_loss = jit(grad(loss))  # Now use gradient descent 
     \end{minted}
@@ -510,13 +510,9 @@ grad_loss = jit(grad(loss))  # Now use gradient descent
     ``NVIDIA today announced its next-generation AI supercomputer — the NVIDIA
     DGX SuperPOD powered by GB200 Grace Blackwell Superchips — for
     processing trillion-parameter models for superscale
-    generative AI training and inference workloads.
+    generative AI training and inference workloads...''
     \vspace{0.5em}
     \vspace{0.5em}
-
-    Featuring a new, highly efficient, liquid-cooled rack-scale architecture,
-    the DGX SuperPOD provides
-    11.5 exaflops of AI supercomputing and 240 terabytes of fast memory.''
 
     \vspace{0.5em}
     \vspace{0.5em}
@@ -531,7 +527,7 @@ grad_loss = jit(grad(loss))  # Now use gradient descent
     \frametitle{Example: Weather forecasting}
 
     
-    ``ECMWF's weather forecasting model is considered the gold standard for
+    ``ECMWF's model is considered the gold standard for
         medium-term weather forecasting\ldots ''
 
         \pause
