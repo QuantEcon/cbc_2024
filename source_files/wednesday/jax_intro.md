@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.2
+    jupytext_version: 1.16.1
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -106,7 +106,7 @@ Let's now look at the differences between JAX and NumPy
 
 #### 32 bit floats
 
-One difference between NumPy and JAX is that JAX currently uses 32 bit floats by default.  
+One difference between NumPy and JAX is that JAX currently uses 32 bit floats by default.
 
 ```{code-cell} ipython3
 jnp.ones(3)
@@ -145,7 +145,7 @@ a
 and then mutate the data in memory:
 
 ```{code-cell} ipython3
-a[0] = 1
+a[0] = 42
 a
 ```
 
@@ -159,36 +159,11 @@ a
 ```{code-cell} ipython3
 :tags: [raises-exception]
 
-a[0] = 1  
+a[0] = 42
 ```
 
 The designers of JAX chose to make arrays immutable because JAX uses a
 functional programming style.  More on this below.  
-
-#### Sneaky mutation
-
-Note that, while mutation is discouraged, it is in fact possible with `at`, as in
-
-```{code-cell} ipython3
-a = jnp.linspace(0, 1, 3)
-id(a)
-```
-
-```{code-cell} ipython3
-a
-```
-
-```{code-cell} ipython3
-a.at[0].set(1)
-```
-
-We can check that the array is mutated by verifying its identity is unchanged:
-
-```{code-cell} ipython3
-id(a)
-```
-
-In general it's better to avoid mutating arrays --- more discussion below.
 
 +++
 
@@ -203,14 +178,12 @@ Typically, in JAX, the state of the random number generator needs to be controll
 
 (This is also related to JAX's functional programming paradigm, discussed below.)
 
-```{code-cell} ipython3
-import jax.random as random
-```
++++
 
 First we produce a key, which seeds the random number generator.
 
 ```{code-cell} ipython3
-key = random.PRNGKey(1)
+key = jax.random.PRNGKey(1)
 ```
 
 ```{code-cell} ipython3
@@ -218,20 +191,20 @@ type(key)
 ```
 
 ```{code-cell} ipython3
-print(key)
+key
 ```
 
 Now we can use the key to generate some random numbers:
 
 ```{code-cell} ipython3
-x = random.normal(key, (3, 3))
+x = jax.random.normal(key, (3, 3))
 x
 ```
 
 If we use the same key again, we initialize at the same seed, so the random numbers are the same:
 
 ```{code-cell} ipython3
-random.normal(key, (3, 3))
+jax.random.normal(key, (3, 3))
 ```
 
 ### Generating fresh draws
@@ -241,7 +214,7 @@ random.normal(key, (3, 3))
 To produce a (quasi-) independent draw, we can use `split`
 
 ```{code-cell} ipython3
-new_keys = random.split(key, 5)   # Generate 5 new keys
+new_keys = jax.random.split(key, 5)   # Generate 5 new keys
 ```
 
 ```{code-cell} ipython3
@@ -251,7 +224,7 @@ len(new_keys)
 ```{code-cell} ipython3
 shape = (3, )
 for i, key in enumerate(new_keys):
-    print(f'Draw from key {i} = {random.normal(key, shape)}')
+    print(f'Draw from key {i} = {jax.random.normal(key, shape)}')
 ```
 
 Another function we can use to update the key is `fold_in`.
@@ -260,17 +233,17 @@ Another function we can use to update the key is `fold_in`.
 seed = 1234  
 new_key = jax.random.fold_in(key, seed)
 
-random.normal(new_key, (3, 1))
+jax.random.normal(new_key, (3, 1))
 ```
 
 This is often used in loops -- here's an example that produces `k` (quasi-) independent random `n x n` matrices using this procedure and prints their determinants.
 
 ```{code-cell} ipython3
 def gen_random_matrices(seed=1234, n=10, k=5):
-    key = random.PRNGKey(seed)
+    key = jax.random.PRNGKey(seed)
     for i in range(k):
-        key = random.fold_in(key, i)
-        d = jnp.linalg.det(random.uniform(key, (n, n)))
+        key = jax.random.fold_in(key, i)
+        d = jnp.linalg.det(jax.random.uniform(key, (n, n)))
         print(f"Determinant = {d:.4}")
 
 gen_random_matrices()
@@ -288,7 +261,7 @@ To see the JIT compiler in action, consider the following function.
 
 ```{code-cell} ipython3
 def f(x):
-    a = 3*x + jnp.sin(x) + jnp.cos(x**2) - jnp.cos(2*x) - x**2 * 0.4 * x**1.5
+    a = 3*x + jnp.sin(x) + jnp.cos(x**2)
     return jnp.sum(a)
 ```
 
@@ -329,9 +302,9 @@ first run includes compile time.
 
 ### When does JAX recompile?
 
-You might remember that Numba recompiles if we change the types of variables in a function call.
+You might remember that Numba recompiles if we change the *types* of variables in a function call.
 
-JAX recompiles more often --- in particular, it recompiles every time we change array sizes.
+JAX recompiles more often --- in particular, it recompiles every time we change types or array sizes.
 
 For example, let's try
 
@@ -394,6 +367,8 @@ Let's time it.
 ```{code-cell} ipython3
 %time g(x).block_until_ready()
 ```
+
+Now let's compile the whole function.
 
 ```{code-cell} ipython3
 g_jit = jax.jit(g)   # target for JIT compilation
@@ -508,11 +483,11 @@ In particular, a pure function has
 Here's an example to show that NumPy functions are not pure:
 
 ```{code-cell} ipython3
-np.random.randn(2)
+np.random.randn(3)
 ```
 
 ```{code-cell} ipython3
-np.random.randn(2)
+np.random.randn(3)
 ```
 
 This function returns the different results when called on the same inputs!
@@ -524,7 +499,7 @@ np.random.get_state()[2]
 ```
 
 ```{code-cell} ipython3
-np.random.randn(2)
+np.random.randn(3)
 ```
 
 ```{code-cell} ipython3
@@ -533,7 +508,7 @@ np.random.get_state()[2]
 
 #### Example 2
 
-Here's a function that's not pure because it depends on a global
+Here's a function that's also not pure because it depends on a global value.
 
 ```{code-cell} ipython3
 a = 10
@@ -548,7 +523,7 @@ a = 20
 f(1)
 ```
 
-Notice that the output of the function cannot be fully predicted from the inputs!
+As with Example 1, the output of the function cannot be fully predicted from the inputs.
 
 +++
 
@@ -560,7 +535,7 @@ Here's a function that fails to be pure because it modifies external state.
 
 ```{code-cell} ipython3
 def change_input(x):   # Not pure -- side effects
-    x[0] = 42
+    x[:] = 42
 ```
 
 Let's test this with
@@ -570,13 +545,9 @@ x = np.ones(5)
 x
 ```
 
-Here we go
-
 ```{code-cell} ipython3
 change_input(x)
 ```
-
-Now the global variable `x` is modified:
 
 ```{code-cell} ipython3
 x
@@ -584,7 +555,7 @@ x
 
 ### Compiling impure functions
 
-JAX does *not* insist on pure functions.
+JAX does *not* insist on pure functions, even when we use the JIT compiler.
 
 For example, JAX will not usually throw errors when compiling impure functions 
 
@@ -688,17 +659,18 @@ plt.show()
 
 Writing fast JAX code requires shifting repetitive tasks from loops to array processing operations, so that the JAX compiler can easily understand the whole operation and generate more efficient machine code.
 
-This procedure is called **vectorization** or **array programming**, and will be familiar to anyone who has used NumPy or MATLAB.
-
 In some ways, vectorization is the same in JAX as it is in NumPy.
 
 But there are also differences, which we highlight here.
 
 As a running example, consider the function
 
-$$
-    f(x,y) = \frac{\cos(x^2 + y^2)}{1 + x^2 + y^2}
-$$
+```{code-cell} ipython3
+@jax.jit
+def f(x, y):
+    return jnp.cos(x**2 + y**2) / (1 + x**2 + y**2)
+```
+
 
 Suppose that we want to evaluate this function on a square grid of $x$ and $y$ points.
 
@@ -708,14 +680,9 @@ Suppose that we want to evaluate this function on a square grid of $x$ and $y$ p
 To clarify, here is the slow `for` loop version, which we run in a setting where `len(x) = len(y)` is very small.
 
 ```{code-cell} ipython3
-@jax.jit
-def f(x, y):
-    return jnp.cos(x**2 + y**2) / (1 + x**2 + y**2)
-
 n = 80
 x = jnp.linspace(-2, 2, n)
 y = x
-
 z_loops = np.empty((n, n))
 ```
 
@@ -726,7 +693,7 @@ for i in range(n):
         z_loops[i, j] = f(x[i], y[j])
 ```
 
-Even for this very small grid, the run time is very slow.
+Even for this very small grid, the run time is slow.
 
 (Notice that we used a NumPy array for `z_loops` because we wanted to write to it.)
 
@@ -765,7 +732,11 @@ x_mesh, y_mesh = jnp.meshgrid(x, y)
 Now we get what we want and the execution time is fast.
 
 ```{code-cell} ipython3
-z_mesh = f(x_mesh, y_mesh) 
+%time z_mesh = f(x_mesh, y_mesh).block_until_ready()
+```
+
+```{code-cell} ipython3
+%time z_mesh = f(x_mesh, y_mesh).block_until_ready()
 ```
 
 Let's confirm that we got the right answer.
@@ -773,6 +744,10 @@ Let's confirm that we got the right answer.
 ```{code-cell} ipython3
 jnp.allclose(z_mesh, z_loops)
 ```
+
+### Larger grids
+
++++
 
 Now we can set up a serious grid and run the same calculation (on the larger grid) in a short amount of time.
 
@@ -784,6 +759,14 @@ x_mesh, y_mesh = jnp.meshgrid(x, y)
 ```
 
 ```{code-cell} ipython3
+x_mesh.shape
+```
+
+```{code-cell} ipython3
+y_mesh.shape
+```
+
+```{code-cell} ipython3
 %%time
 z_mesh = f(x_mesh, y_mesh) 
 ```
@@ -793,7 +776,7 @@ z_mesh = f(x_mesh, y_mesh)
 z_mesh = f(x_mesh, y_mesh) 
 ```
 
-But there is one problem here: the mesh grids use a lot of memory.
+But there is one problem here: the inputs use a lot of memory.
 
 ```{code-cell} ipython3
 (x_mesh.nbytes + y_mesh.nbytes) / 1_000_000  # MB of memory
@@ -821,6 +804,14 @@ We can achieve a similar effect through NumPy style broadcasting rules.
 ```{code-cell} ipython3
 x_reshaped = jnp.reshape(x, (n, 1))   # Give x another dimension (column)
 y_reshaped = jnp.reshape(y, (1, n))   # Give y another dimension (row)
+```
+
+```{code-cell} ipython3
+x_reshaped.shape
+```
+
+```{code-cell} ipython3
+y_reshaped.shape
 ```
 
 When we evaluate $f$ on these reshaped arrays, we replicate the nested for loops in the original version.
@@ -854,40 +845,33 @@ There's another approach to vectorization we can pursue, using [jax.vmap](https:
 
 It runs out that, when we are working with complex functions and operations, this `vmap` approach can be the easiest to implement.
 
-It's also very memory parsimonious.
-
 +++
 
-The first step is to vectorize the function `f` in `y`.
+Here's our function again:
 
 ```{code-cell} ipython3
-f_vec_y = jax.vmap(f, in_axes=(None, 0))  
+@jax.jit
+def f(x, y):
+    return jnp.cos(x**2 + y**2) / (1 + x**2 + y**2)
 ```
 
-In the line above, `(None, 0)` indicates that we are vectorizing in the second argument, which is `y`.
-
-Next, we vectorize in the first argument, which is `x`.
+Here are the steps
 
 ```{code-cell} ipython3
-f_vec = jax.vmap(f_vec_y, in_axes=(0, None))
-```
-
-Finally, we JIT-compile the result:
-
-```{code-cell} ipython3
-f_vec = jax.jit(f_vec)
+f = jax.vmap(f, in_axes=(None, 0))    # vectorize in y
+f = jax.vmap(f, in_axes=(0, None))    # vectorize in x
 ```
 
 With this construction, we can now call the function $f$ on flat (low memory) arrays.
 
 ```{code-cell} ipython3
 %%time
-z_vmap = f_vec(x, y).block_until_ready()
+z_vmap = f(x, y).block_until_ready()
 ```
 
 ```{code-cell} ipython3
 %%time
-z_vmap = f_vec(x, y).block_until_ready()
+z_vmap = f(x, y).block_until_ready()
 ```
 
 Let's check we produce the correct answer:
@@ -908,56 +892,46 @@ del z_reshaped
 
 +++
 
-Repeat the exercise of computing the approximation to $\pi$ by simulation:
+#### Exercise 1
 
-1. draw $n$ observations of a bivariate uniform on the unit square
++++
+
+Compute an approximation to $\pi$ by simulation:
+
+1. draw $n$ observations of a bivariate uniform on the unit square $[0, 1] \times [0, 1]$
 2. count the fraction that fall in the unit circle (radius 0.5) centered on (0.5, 0.5)
 3. multiply the result by 4
 
 Use JAX
 
 ```{code-cell} ipython3
-for i in range(12):
+for i in range(18):
     print("Solution below 🐠")
 ```
 
 ```{code-cell} ipython3
-def approx_pi(n, key):
+@jax.jit
+def approx_pi(n=1_000_000, seed=1234):
+    key = jax.random.PRNGKey(seed)
     u = jax.random.uniform(key, (2, n))
     distances = jnp.sqrt((u[0, :] - 0.5)**2 + (u[1, :] - 0.5)**2)
     fraction_in_circle = jnp.mean(distances < 0.5)
     return fraction_in_circle * 4  # dividing by radius**2
-
-n = 1_000_000 # sample size for Monte Carlo simulation
-key = jax.random.PRNGKey(1234)
 ```
 
 ```{code-cell} ipython3
-%time approx_pi(n, key)
+%time approx_pi()
 ```
 
 ```{code-cell} ipython3
-%time approx_pi(n, key)
+%time approx_pi()
 ```
 
-```{code-cell} ipython3
-approx_pi_jitted = jax.jit(approx_pi, static_argnums=(0,))
-```
+#### Exercise 2
 
-```{code-cell} ipython3
-%time approx_pi_jitted(n, key)
-```
+The following code uses Monte Carlo to price a European call option under certain assumptions on stock price dynamics.
 
-```{code-cell} ipython3
-%time approx_pi_jitted(n, key)
-```
-
-**Exercise**
-
-In a previous notebook we used Monte Carlo to price a European call option and
-constructed a solution using Numba.
-
-The code looked like this:
+The code is accelerated by Numba.
 
 ```{code-cell} ipython3
 import numba
@@ -1008,11 +982,10 @@ compute_call_price_parallel()
 Try writing a version of this operation for JAX, using all the same
 parameters.
 
-If you are running your code on a GPU, you should be able to achieve
-significantly faster execution.
+If you are running your code on a GPU, you should be able to achieve faster execution.
 
 ```{code-cell} ipython3
-for i in range(12):
+for i in range(18):
     print("Solution below 🐠")
 ```
 
@@ -1031,15 +1004,17 @@ def compute_call_price_jax(β=β,
                            ρ=ρ,
                            ν=ν,
                            M=M,
-                           key=jax.random.PRNGKey(1)):
+                           seed=1234):
 
+    key = jax.random.PRNGKey(seed)
     s = jnp.full(M, np.log(S0))
     h = jnp.full(M, h0)
     for t in range(n):
-        key, subkey = jax.random.split(key)
-        Z = jax.random.normal(subkey, (2, M))
+        Z = jax.random.normal(key, (2, M))
         s = s + μ + jnp.exp(h) * Z[0, :]
         h = ρ * h + ν * Z[1, :]
+        key = jax.random.fold_in(key, t)
+
     expectation = jnp.mean(jnp.maximum(jnp.exp(s) - K, 0))
         
     return β**n * expectation
