@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.2
+    jupytext_version: 1.16.1
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -161,12 +161,11 @@ def update_cross_section(params, X):
     given by array X.  (Thus, X[i] is the inventory of the i-th firm.)
     
     """
-    s, S = params.s, params.S
+    s, S, μ, σ = params
     num_firms = len(X)
     Z = np.random.randn(num_firms)
-    D = np.exp(params.μ + params.σ * Z)
-    X_new = np.where(
-        X <= s, np.maximum(S - D, 0), np.maximum(X - D, 0))
+    D = np.exp(μ + σ * Z)
+    X_new = np.where(X <= s, np.maximum(S - D, 0), np.maximum(X - D, 0))
     return X_new
 ```
 

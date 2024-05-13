@@ -151,7 +151,7 @@ Now we can call the function `solow_fortran` from Python.
 
 (`fortranmagic` uses a program called `F2Py` to create a Python "wrapper" for the Fortran subroutine so we can access it from within Python.)
 
-Let's make sure it gives the right answer.
+Let's make sure it gives a reasonable answer.
 
 ```{code-cell} ipython3
 n = 10_000_000
@@ -182,12 +182,12 @@ We recall the Python function from above.
 
 ```{code-cell} ipython3
 def solow(n=10_000_000, α=0.4, s=0.3, δ=0.1, k0=0.2):
-    k =  k_sum = k0
+    k = k_sum = k0
     for t in range(n-1):
         a = np.random.rand()
         k = a * s * k**α + (1 - δ) * k
         k_sum += k
-    return k
+    return k_sum / n
 ```
 
 Now let's flag it for JIT-compilation:
@@ -210,7 +210,7 @@ And then run it:
 %timeit k = solow_jitted()
 ```
 
-Hopefully we get the same value:
+Hopefully we get a similar value (about 1.95):
 
 ```{code-cell} ipython3
 k

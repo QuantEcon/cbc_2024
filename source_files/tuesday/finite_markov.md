@@ -138,12 +138,6 @@ P
   \right) 
 $$
 
-Once we have the values $ \alpha $ and $ \beta $, we can address a range of questions, such as
-
-- What is the average duration of unemployment?  
-- Over the long-run, what fraction of time does a worker find herself unemployed?  
-
-We'll see how to do this below.
 
 +++
 
@@ -311,8 +305,8 @@ Hints:
 How does the timing compare to the original and the QuantEcon routine?
 
 ```{code-cell} ipython3
-for i in range(12):
-    print("Solution below.")
+for i in range(18):
+    print("Solution below. 🐾")
 ```
 
 **Solution**
@@ -343,11 +337,17 @@ def mc_sample_path_fast(P, ψ_0,  sample_size=1_000):
     for t in range(sample_size - 1):
         X[t+1] = qe.random.draw(P[X[t], :])
     return X
+```
 
+```{code-cell} ipython3
 ψ_0 = (1, 0)
 P = [[0.4, 0.6],
      [0.2, 0.8]]
-P, ψ_0 = np.asarray(P), np.asarray(ψ_0)
+P, ψ_0 = np.array(P), np.array(ψ_0)
+```
+
+```{code-cell} ipython3
+%time X = mc_sample_path_fast(P, ψ_0, sample_size=1_000_000)
 ```
 
 ```{code-cell} ipython3
@@ -355,7 +355,7 @@ P, ψ_0 = np.asarray(P), np.asarray(ψ_0)
 ```
 
 ```{code-cell} ipython3
-%time mc_sample_path_fast(P, ψ_0, sample_size=1_000_000)
+np.mean(X == 0)
 ```
 
 Incidentally, we can also hold the stochastic matrix as state in a jitted function as follows.
@@ -392,11 +392,15 @@ mc_sample_path_closure = mc_sample_path_factory(P, ψ_0)
 ```
 
 ```{code-cell} ipython3
-%time mc_sample_path_closure(sample_size=1_000_000)
+%time X = mc_sample_path_closure(sample_size=1_000_000)
 ```
 
 ```{code-cell} ipython3
-%time mc_sample_path_closure(sample_size=1_000_000)
+%time X = mc_sample_path_closure(sample_size=1_000_000)
+```
+
+```{code-cell} ipython3
+np.mean(X == 0)
 ```
 
 ## Marginal Distributions
@@ -518,10 +522,10 @@ We can also test this using [QuantEcon.py](http://quantecon.org/quantecon-py)’
 
 ```{code-cell} ipython3
 P_1 = [[0.9, 0.1, 0.0],
-      [0.4, 0.4, 0.2],
-      [0.1, 0.1, 0.8]]
+       [0.4, 0.4, 0.2],
+       [0.1, 0.1, 0.8]]
 
-mc = qe.MarkovChain(P_1, ('poor', 'middle', 'rich'))
+mc = qe.MarkovChain(P_1)
 mc.is_irreducible
 ```
 
@@ -539,7 +543,7 @@ P_2 = [[1.0, 0.0, 0.0],
       [0.1, 0.8, 0.1],
       [0.0, 0.2, 0.8]]
 
-mc = qe.MarkovChain(P_2, ('poor', 'middle', 'rich'))
+mc = qe.MarkovChain(P_2)
 mc.is_irreducible
 ```
 
@@ -549,7 +553,7 @@ For example, poverty is a life sentence in the second graph but not the first.
 
 **Exercise**
 
-It's also true that an $n \times n$ stochastic matrix $P$ is irreducible if and only if $\sum_{i=0}^n P^i$ is everwhere positive.  
+A $n \times n$ stochastic matrix $P$ is irreducible if and only if $\sum_{i=0}^n P^i$ is everwhere positive.  
 
 Write a function that checks irreducibility of given $P$ using this result and test it on $P_1$ and $P_2$ above.
 
@@ -712,9 +716,14 @@ mc.stationary_distributions  # Show all stationary distributions
 
 +++
 
-Another option is to regard the system as an eigenvector problem: a vector
+
+Assume that $P$ is irreducible (and hence has only one stationary distribution).
+
+A vector
 $ \psi $ such that $ \psi = \psi P $ is a left eigenvector associated
 with the unit eigenvalue $ \lambda = 1$.
+
+Moreover, in this setting, the Perron-Frobenius theorem tells us that every other eigenvalue will be $< 1$.
 
 Try writing a function that uses this information to compute the stationary distribution of $P$.
 
@@ -722,16 +731,19 @@ Note that you can get the left eigenvectors by computing the ordinary (right) ei
 
 Eigenvalues and eigenvectors can be obtained via `np.linalg.eig`.
 
-In the exercise you can assume that $P$ has only one stationary distribution, and you can test your function using
+
+You can test your function using
 
 ```{code-cell} ipython3
 P = np.array([[0.4, 0.6],
               [0.2, 0.8]])
 ```
 
+You should get `array([0.25, 0.75])`.
+
 ```{code-cell} ipython3
 for i in range(16):
-    print("Solution below! 🦘")
+    print("Solution below! 🐾")
 ```
 
 **Solution**
@@ -745,15 +757,15 @@ def compute_stationary_via_eigenvecs(P):
     The corresponding eigenvector is the stationary distribution.
     """
     P = np.array(P)
-    out = np.linalg.eig(P.T)
-    eigvals, eigvecs = out.eigenvalues, out.eigenvectors
-    i = np.argmax(eigvals)  # index of largest eigenvalue
-    dominant_eigvec = eigvecs[:, i] 
+    eigenvalues, eigenvectors = np.linalg.eig(P.T)
+    i = np.argmax(eigenvalues)             # index of largest eigenvalue
+    dominant_eigvec = eigenvectors[:, i]   # extract column corresponding to i
     ψ_star = dominant_eigvec / np.sum(dominant_eigvec) # normalize
     return ψ_star
 ```
 
 ```{code-cell} ipython3
+ψ_star = compute_stationary_via_eigenvecs(P)
 ψ_star
 ```
 

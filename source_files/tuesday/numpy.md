@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.2
+    jupytext_version: 1.16.1
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -43,8 +43,10 @@ Let's review the basics of NumPy arrays.
 Here are a few ways to create arrays:
 
 ```{code-cell} ipython3
-a = np.array((10.0, 20.0))   # Create array from Python tuple
-a
+a = (10.0, 20.0)
+print(type(a))
+a = np.array(a)   # Create array from Python tuple
+type(a)
 ```
 
 ```{code-cell} ipython3
@@ -108,6 +110,14 @@ np.reshape(a, (4, 1))
 Standard arithmetic operators are pointwise:
 
 ```{code-cell} ipython3
+a
+```
+
+```{code-cell} ipython3
+b
+```
+
+```{code-cell} ipython3
 a + b
 ```
 
@@ -115,11 +125,19 @@ a + b
 a * b  # pointwise multiplication
 ```
 
-To do matrix multiplication we use `@`, as in
+### Matrix multiplication
 
 ```{code-cell} ipython3
-a @ b
+a @ b  
 ```
+
+```{code-cell} ipython3
+np.ones(3) @ np.zeros(3)  # inner product
+```
+
+### Reductions
+
++++
 
 There are various functions for acting on arrays, such as
 
@@ -127,10 +145,33 @@ There are various functions for acting on arrays, such as
 np.mean(a)
 ```
 
+```{code-cell} ipython3
+np.sum(a)
+```
+
 These operations have an equivalent OOP syntax, as in
 
 ```{code-cell} ipython3
 a.mean()
+```
+
+```{code-cell} ipython3
+a.sum()
+```
+
+These operations also work on higher-dimensional arrays:
+
+```{code-cell} ipython3
+a = np.linspace(0, 3, 4).reshape(2, 2)
+a
+```
+
+```{code-cell} ipython3
+a.sum(axis=0)  # sum columns
+```
+
+```{code-cell} ipython3
+a.sum(axis=1)  # sum rows
 ```
 
 ### Broadcasting
@@ -180,15 +221,12 @@ When they act on arrays, they act pointwise (element-by-element).
 These kinds of functions are called **universal functions** or **ufuncs**.
 
 ```{code-cell} ipython3
-np.cos(1.0)
-```
-
-```{code-cell} ipython3
 np.cos(np.pi)
 ```
 
 ```{code-cell} ipython3
-a = np.random.randn(3, 3)
+a = np.random.choice((0, np.pi), 6).reshape(2, 3)
+a
 ```
 
 ```{code-cell} ipython3

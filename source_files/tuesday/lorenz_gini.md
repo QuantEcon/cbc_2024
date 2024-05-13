@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.2
+    jupytext_version: 1.16.1
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -110,8 +110,7 @@ ax.hlines(y[j], [0], x[j], alpha=0.5, colors='k', ls='--')
 plt.show()
 ```
 
-For example, if we imagine these draws as being observations of wealth across a
-sample of households, then the dashed lines show that the bottom 80\% of
+In this sample, the dashed lines show that the bottom 80\% of
 households own just over 40\% of total wealth.
 
 +++
@@ -262,11 +261,11 @@ We'll start with a NumPy version that uses vectorized code to avoid loops.
 
 ```{code-cell} ipython3
 def gini(w):
-    w_size = len(w)
-    w_1 = np.reshape(w, (w_size, 1))
-    w_2 = np.reshape(w, (1, w_size))
+    n = len(w)
+    w_1 = np.reshape(w, (n, 1))
+    w_2 = np.reshape(w, (1, n))
     g_sum = np.sum(np.abs(w_1 - w_2))
-    return g_sum / (2 * w_size * np.sum(w))
+    return g_sum / (2 * n * np.sum(w))
 ```
 
 ```{code-cell} ipython3
