@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.1
+    jupytext_version: 1.16.2
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -39,7 +39,7 @@ Autodiff is a technique for calculating derivatives on a computer.
 
 ### Autodiff is not finite differences
 
-The derivative of the exponential function $f(x) = \exp(2x)$ function is
+The derivative of $f(x) = \exp(2x)$ is
 
 $$
     f'(x) = 2 \exp(2x)
@@ -98,18 +98,17 @@ Symbolic calculus tries to use rules for differentiation to produce a single
 closed-form expression representing a derivative.
 
 ```{code-cell} ipython3
-from sympy import symbols, diff, init_printing
-init_printing(use_unicode=True)
+from sympy import symbols, diff
 
 m, a, b, x = symbols('m a b x')
-expr = (a*x + b)**m
-expr.diff((x, 6))  # 6-th order derivative
+f_x = (a*x + b)**m
+f_x.diff((x, 6))  # 6-th order derivative
 ```
 
 Symbolic calculus is not well suited to high performance
 computing.
 
-One disadvantage is that symbolic calculus cannot differentiate through control flow, only through mathematical expressions.
+One disadvantage is that symbolic calculus cannot differentiate through control flow.
 
 Also, using symbolic calculus might involve redundant calculations.
 
@@ -122,7 +121,7 @@ $$
 
 If we evaluate at $x$, then we evalute $f(x)$ and $g(x)$ twice each.
 
-Also, computing $f'(x)$ and $f(x)$ might involve similar terms (e.g., $(\exp(2x)' = 2 \exp(2x)$) but this is not exploited in symbolic algebra.
+Also, computing $f'(x)$ and $f(x)$ might involve similar terms (e.g., $(f(x) = \exp(2x)' \implies f'(x) = 2f(x)$) but this is not exploited in symbolic algebra.
 
 +++
 
