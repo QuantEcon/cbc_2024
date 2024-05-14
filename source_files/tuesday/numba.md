@@ -4,7 +4,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.1
+    jupytext_version: 1.16.2
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -13,9 +13,14 @@ kernelspec:
 
 # Accelerating Python Code with Numba
 
+----
+
 ### Written for the CBC Workshop (May 2024)
 
 #### John Stachurski
+
+
+-----
 
 +++
 
@@ -239,7 +244,9 @@ def solow(n=10_000_000, α=0.4, s=0.3, δ=0.1, k0=0.2):
 
 After JIT compilation, function execution speed is about the same as Fortran.
 
-+++
+```{code-cell} ipython3
+k
+```
 
 #### How does it work?
 
@@ -366,7 +373,8 @@ plt.show()
 #### Vectorized code
 
 ```{code-cell} ipython3
-grid = np.linspace(-3, 3, 10_000)
+n = 10_000
+grid = np.linspace(-3, 3, n)
 ```
 
 ```{code-cell} ipython3
@@ -386,7 +394,7 @@ np.max(f(x, y))
 
 +++
 
-A jitted version -- note the speed gain.
+Let's try a jitted version with loops.
 
 ```{code-cell} ipython3
 @jit
@@ -410,41 +418,50 @@ compute_max()
 compute_max()
 ```
 
-#### JITTed, parallelized code: @vectorize
+Why the speed gain?
 
++++
 
-Numba for vectorization with automatic parallization - even faster:
+#### JITTed, parallelized code
+
+We can parallelize on the CPU through Numba via `@jit(parallel=True)`
+
+Our strategy is
+
+- Compute the max value along each row, parallelizing this task across rows
+- Take the max of these row maxes
+
+The memory footprint is still relatively light, because the size of the rows is only `n x 1`.
 
 ```{code-cell} ipython3
----
-nbpresent:
-  id: e443f7ad-f26e-4148-983e-83a5f6a2214e
----
-signature = 'float64(float64, float64)'  # A function sending (float, float) into float
-
-@vectorize(signature, target='parallel')
-def f_par(x, y):
+@jit
+def f(x, y):
     return np.cos(x**2 + y**2) / (1 + x**2 + y**2) + 1
 ```
 
 ```{code-cell} ipython3
-x, y = np.meshgrid(grid, grid)
+from numba import prange
+```
 
-np.max(f_par(x, y))
+```{code-cell} ipython3
+@jit(parallel=True)
+def compute_max():
+    row_maxes = np.empty(n)
+    y_grid = grid
+    for i in prange(n):
+        x = grid[i]
+        row_maxes[i] = np.max(f(x, y_grid))
+    return np.max(row_maxes)
 ```
 
 ```{code-cell} ipython3
 %%time
-np.max(f_par(x, y))
+compute_max()
 ```
 
 ```{code-cell} ipython3
 %%time
-np.max(f_par(x, y))
-```
-
-```{code-cell} ipython3
-
+compute_max()
 ```
 
 ```{code-cell} ipython3
