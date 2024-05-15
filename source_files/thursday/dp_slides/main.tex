@@ -277,11 +277,11 @@
 
  \date[\today]{}
 
-\title{Dynamic Programming: Major Algorithms}
+\title{Dynamic Programming: Algorithms}
 
 \author{John Stachurski}
 
-\date{March 2024}
+\date{May 2024}
 
 
 
@@ -297,8 +297,6 @@
     \frametitle{Topics}
 
     \begin{itemize}
-        \item Optimality
-        \vspace{0.5em}
         \item Value function iteration (VFI)
         \vspace{0.5em}
         \item Howard policy iteration (OPI)
@@ -335,14 +333,16 @@
         \item $R$ is the gross rate of return on assets
     \end{itemize}
 
+    \vspace{0.5em}
+    \vspace{0.5em}
     Bellman equation:
-
+    %
     \begin{equation*}
         v(w, y) = 
         \max_{0 \leq w' \leq w}
         \left\{
             u(Rw + y - w') 
-             + \beta \sum_{w'} v(w', y') Q(y, y')
+             + \beta \sum_{y'} v(w', y') Q(y, y')
         \right\}
     \end{equation*}
 
@@ -393,10 +393,8 @@
     \end{equation*}
     %
 
-    Choosing $\sigma \in \Sigma$ $\implies$
-    %
     \begin{itemize}
-        \item[] respond to $X_t$ with action $A_t := \sigma(X_t)$ at 
+        \item respond to $X_t$ with action $A_t = \sigma(X_t)$ at 
         \underline{all} $t \geq 0$
     \end{itemize}
 
@@ -421,30 +419,51 @@
 
 \begin{frame}
 
-    Fixing $\sigma \in \Sigma$, set
+     Let $v_\sigma(x) =$ lifetime value of policy $\sigma$, starting from $x$
+
+    \vspace{0.5em}
+    The function $v_\sigma$ satisfies
+    
+    \begin{equation*}
+        v_\sigma(x) = r(x, \sigma(x)) + \beta \sum_{x'} v_\sigma(x')P(x, x')
+    \end{equation*}
+    %
+
+    Letting
     %
     \begin{itemize}
         \item $P_\sigma(x, x') = P(x, \sigma(x), x') =$ Markov dynamics given
-            $\sigma$
+            $\sigma$ and
         \vspace{0.5em}
         \item $r_\sigma(x) = r(x, \sigma(x)) = $ rewards at $x$ given $\sigma$
-        \vspace{0.5em}
-        \item $\EE_x = \EE[ \; \cdot \; \given X_0 = x]$
     \end{itemize}
 
-    \vspace{0.5em}
-    \vspace{0.5em}
-    \vspace{0.5em}
-    \vspace{0.5em}
-    When our actions follow $\sigma$, we have
-    
+    we can write this as the vector equation
+
     \begin{equation*}
-        \EE_x  \, r(X_t, A_t) 
-         = \EE_x  \, r_\sigma(X_t)  
-         = \sum_{x'} r_\sigma(x') P_\sigma^t (x, x')
-        = (P_\sigma^t \, r_\sigma) (x)
+        v_\sigma = r_\sigma + \beta P_\sigma v_\sigma
+    \end{equation*}
+
+
+\end{frame}
+
+\begin{frame}
+    
+    How to solve
+    %
+    \begin{equation*}
+        v_\sigma = r_\sigma + \beta P_\sigma v_\sigma
     \end{equation*}
     %
+    for $v_\sigma$?
+
+        \vspace{0.5em}
+        \vspace{0.5em}
+    Option 1: Use linear algebra to obtain
+    %
+    \begin{equation*}
+        v_\sigma = (I - \beta P_\sigma)^{-1}  r_\sigma
+    \end{equation*}
 
 \end{frame}
 
@@ -452,43 +471,7 @@
 
 \begin{frame}
 
-    
-    \vspace{0.5em}
-    \vspace{0.5em}
-    The \navy{lifetime value of $\sigma$} starting from $x$ is
-    %
-    \begin{align*}
-        v_\sigma (x) 
-        & := \EE_x 
-            \sum_{t \geq 0} \beta^t r_\sigma(X_t) 
-            \\
-        & = \sum_{t \geq 0} \EE_x \left[ \beta^t r_\sigma(X_t) \right]
-            \\
-        & = \sum_{t \geq 0} \beta^t (P_\sigma^t \, r_\sigma)(x)
-    \end{align*}
-    %
-
-
-    \vspace{0.5em}
-    By the Neumann (geometric) series lemma,
-
-    %
-    \begin{equation*}
-        v_\sigma 
-        = \sum_{t \geq 0} (\beta P_\sigma)^t \, r_\sigma
-        = (I - \beta P_\sigma)^{-1} \, r_\sigma 
-    \end{equation*}
-    %
-
-
-\end{frame}
-
-
-
-\begin{frame}
-    \frametitle{Policy Operators}
-
-   The \navy{policy operator} corresponding to $\sigma$ is
+   Option 2: Define the \navy{policy operator} corresponding to $\sigma$ is
     %
     \begin{equation*}
         (T_\sigma \, v)(x)
@@ -502,7 +485,7 @@
 
 
     \vspace{0.5em}
-    In vector notation (with $v \in \RR^n$),
+    In vector notation,
     %
     \begin{equation*}
         T_\sigma \, v 
@@ -512,10 +495,18 @@
 
     \vspace{0.5em}
     \vspace{0.5em}
+    \vspace{0.5em}
+    \vspace{0.5em}
 
-    \begin{itemize}
-        \item \Fact $T_\sigma$ is a contraction map on $\RR^n$
-    \end{itemize}
+    \Fact $T_\sigma$ is a contraction map on $\RR^n$
+
+    \vspace{0.5em}
+    Proof: Follows from
+    %
+    \begin{equation*}
+        |T_\sigma \, v - T_\sigma \, w|
+        \leq \beta |P_\sigma \, v - P_\sigma \, w|
+    \end{equation*}
 
 \end{frame}
 
@@ -546,6 +537,9 @@
     $$v \text{ is a fixed point of } T_\sigma \; \iff \; v = v_\sigma $$
 
 \end{frame}
+
+
+
 
 \begin{frame}
     \frametitle{Greedy Policies}
@@ -685,17 +679,27 @@
     \begin{algorithm}[H]
     \DontPrintSemicolon
     input $v_0 \in \RR^n$\;
+    \vspace{0.3em}
     input $\tau$\;
+    \vspace{0.3em}
     $\epsilon \leftarrow \tau + 1$ \;
+    \vspace{0.3em}
     $k \leftarrow 0$ \;
+    \vspace{0.3em}
     \While{$\epsilon > \tau $}
     {
         $v_{k+1} \leftarrow Tv_k$ \;
+    \vspace{0.3em}
         $\epsilon \leftarrow \| v_k - v_{k+1} \|_\infty$ \;
+    \vspace{0.3em}
         $k \leftarrow k + 1$ \;
+    \vspace{0.3em}
     }
+    \vspace{0.3em}
     Compute a $v_k$-greedy policy $\sigma$ \;
+    \vspace{0.3em}
     \Return{$\sigma$}
+    \vspace{0.3em}
     \caption{VFI for MDPs}
     \end{algorithm}
 }
@@ -746,16 +750,23 @@
     \begin{algorithm}[H]
         \DontPrintSemicolon
         input $\sigma \in \Sigma$ \;
+    \vspace{0.3em}
         $v_0 \leftarrow v_\sigma$ and $k \leftarrow 0$  \;
+    \vspace{0.3em}
         \Repeat
         {
             $\sigma_k \leftarrow $ a $v_k$-greedy policy \;
+    \vspace{0.3em}
             $v_{k+1} \leftarrow (I - \beta P_{\sigma_k} )^{-1} r_{\sigma_k}$ \;
+    \vspace{0.3em}
             \lIf{$v_{k+1} = v_k$}{break} 
+    \vspace{0.3em}
             $k \leftarrow k + 1$ \;
+    \vspace{0.3em}
         }
         \Return{$\sigma_k$}
-        \caption{\label{algo:fshpi} Howard policy iteration for MDPs}
+    \vspace{0.3em}
+        \caption{Howard policy iteration for MDPs}
     \end{algorithm}
     }
 
@@ -838,17 +849,24 @@
     \begin{algorithm}[H]
         \DontPrintSemicolon
         input $v_0 \in \RR^n$\;
-        input $\tau$\;
-        input $m \in \NN$, a step size \;
+        \vspace{0.3em}
+        input $\tau > 0$ and $m \in \NN$, a step size \;
+        \vspace{0.3em}
         $k \leftarrow 0$ \;
+        \vspace{0.3em}
         $\epsilon \leftarrow \tau + 1$ \;
+        \vspace{0.3em}
         \While{$\epsilon > \tau $}
         {
             $\sigma_k \leftarrow $ a $v_k$-greedy policy \;
+        \vspace{0.3em}
             $v_{k+1} \leftarrow T_{\sigma_k}^m v_k$  \;
+        \vspace{0.3em}
             $\epsilon \leftarrow \| v_k - v_{k+1} \|_\infty$ \;
+        \vspace{0.3em}
             $k \leftarrow k + 1$ \;
         }
+        \vspace{0.3em}
         \Return{$\sigma_k$}
         \caption{Optimistic policy iteration for MDPs}
     \end{algorithm}
