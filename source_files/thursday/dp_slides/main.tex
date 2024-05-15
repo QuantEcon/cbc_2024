@@ -319,56 +319,42 @@
 
 
 
-
 \begin{frame}
-    \frametitle{Set Up}
+    \frametitle{Example: optimal savings}
+    
+     Wealth evolves according to 
 
-    We take as given 
-    %
-    \begin{enumerate}
-        \item a set $\Xsf$ with $n$ elements called the \navy{state space} and
-    \vspace{0.5em}
-        \item a finite set $\Asf$ called the \navy{action space}
-    \end{enumerate}
-     
-    \vspace{0.5em}
-    We study an agent who, at each integer $t \geq 0$
-    %
-    \begin{enumerate}
-        \item observes the current state $X_t \in \Xsf$
-    \vspace{0.5em}
-        \item responds with an action $A_t \in \Asf$
-    \end{enumerate}
+     \begin{equation*}
+         w_{t+1} = Rw_t - c_t + y_t
+     \end{equation*}
 
-    \vspace{0.5em}
-    \vspace{0.5em}
-    \vspace{0.5em}
-    Her aim is to maximize 
-    %
-    \begin{equation*}\label{eq:dmdp_ob}
-        \EE \sum_{t \geq 0} \beta^t r(X_t, A_t)
-        \quad \text{ given } X_0 = x_0 
+
+    \begin{itemize}
+        \item $y$ is labor income
+        \item $w$ is wealth
+        \item $R$ is the gross rate of return on assets
+    \end{itemize}
+
+    Bellman equation:
+
+    \begin{equation*}
+        v(w, y) = 
+        \max_{0 \leq w' \leq w}
+        \left\{
+            u(Rw + y - w') 
+             + \beta \sum_{w'} v(w', y') Q(y, y')
+        \right\}
     \end{equation*}
 
 
 \end{frame}
 
 
+
 \begin{frame}
 
+    A generalization:
 
-
-    Let $P$ denote transition probabilities:
-
-    \begin{equation*}
-        P(x, a, x') = \text{ prob of transitioning to $x'$ given $x, a$}
-    \end{equation*}
-
-    \vspace{0.5em}
-
-    
-    The \navy{Bellman equation} is
-    %
     \begin{equation*}
             v(x)
             = \max_{a \in \Gamma(x)}
@@ -383,11 +369,17 @@
     \vspace{0.5em}
 
     \begin{itemize}
+        \item $x \in \Xsf$ is the \navy{state}
+        \item $a \in \Asf$ is the \navy{action}
         \item $\Gamma(x) =$ actions available in state $x$
     \end{itemize}
 
 
 \end{frame}
+
+
+
+
 
 
 \begin{frame}
@@ -401,20 +393,23 @@
     \end{equation*}
     %
 
-    \begin{itemize}
-        \item Let \navy{$\Sigma := $} the set of all feasible policies
-    \end{itemize}
-
-    \vspace{0.5em}
-    \vspace{0.5em}
-    \vspace{0.5em}
-
     Choosing $\sigma \in \Sigma$ $\implies$
     %
     \begin{itemize}
-        \item[] respond to state $X_t$ with action $A_t := \sigma(X_t)$ at 
+        \item[] respond to $X_t$ with action $A_t := \sigma(X_t)$ at 
         \underline{all} $t \geq 0$
     \end{itemize}
+
+    \vspace{0.5em}
+    \vspace{0.5em}
+    \vspace{0.5em}
+
+    Let 
+    %
+    \begin{center}
+            $\Sigma = $ the set of all feasible policies
+    \end{center}
+
 
 
 
@@ -429,12 +424,12 @@
     Fixing $\sigma \in \Sigma$, set
     %
     \begin{itemize}
-        \item $P_\sigma(x, x') := P(x, \sigma(x), x') =$ Markov dynamics given
+        \item $P_\sigma(x, x') = P(x, \sigma(x), x') =$ Markov dynamics given
             $\sigma$
         \vspace{0.5em}
-        \item $r_\sigma(x) := r(x, \sigma(x)) = $ rewards at $x$ given $\sigma$
+        \item $r_\sigma(x) = r(x, \sigma(x)) = $ rewards at $x$ given $\sigma$
         \vspace{0.5em}
-        \item $\EE_x := \EE[ \; \cdot \; \given X_0 = x]$
+        \item $\EE_x = \EE[ \; \cdot \; \given X_0 = x]$
     \end{itemize}
 
     \vspace{0.5em}
