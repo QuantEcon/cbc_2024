@@ -780,7 +780,7 @@ in_time = time.time()
 planner_v, H_plan, vfi_num_iter = compute_planner_solution(model)
 out_time = time.time()
 diff = out_time - in_time
-print(f"Computed decentralized equilibrium in {diff} seconds")
+print(f"Computed planner solution in {diff} seconds")
 ```
 
 ### Policy plots
